@@ -1,0 +1,488 @@
+---
+title: "Final Project"
+author: "Jingwen Zhong;  Chenglu Xia
+date: "5/10/2021"
+#output: pdf_document
+output:
+  pdf_document: 
+    latex_engine: xelatex
+    fig_height: 4
+    fig_caption: yes
+  df_print: paged
+  word_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, warning = FALSE, message = FALSE, fig.show ='hold',tidy.opts=list(width.cutoff=80))
+```
+
+```{r}
+#Load packages
+library(ggplot2) # visualization
+library(ggrepel)
+library(ggthemes) # visualization
+library(scales) # visualization
+library(dplyr) # data manipulation
+library(VIM)
+library(data.table)
+library(formattable)
+library(plotly)
+library(corrplot)
+library(GGally)
+library(caret)
+```
+
+## Data Preprocessing
+
+```{r}
+## Dataset
+IMDB <- read.csv("movie_metadata.csv")
+# str(IMDB)
+
+# delete duplicate rows
+IMDB <- IMDB[!duplicated(IMDB), ]
+
+# Tidy up the movie title
+library(stringr)
+IMDB$movie_title <- gsub("Â", "", as.character(factor(IMDB$movie_title)))
+# str_trim(IMDB$movie_title, side = "right")
+```
+
+```{r}
+##Split Genres
+# create a new data frame
+genres.df <- as.data.frame(IMDB[,c("genres", "imdb_score")])
+# separate different genres into new columns
+genres.df$Action <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Action") 1 else 0)
+genres.df$Adventure <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Adventure") 1 else 0)
+genres.df$Animation <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Animation") 1 else 0)
+genres.df$Biography <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Biography") 1 else 0)
+genres.df$Comedy <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Comedy") 1 else 0)
+genres.df$Crime <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Crime") 1 else 0)
+genres.df$Documentary <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Documentary") 1 else 0)
+genres.df$Drama <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Drama") 1 else 0)
+genres.df$Family <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Family") 1 else 0)
+genres.df$Fantasy <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Fantasy") 1 else 0)
+genres.df$`Film-Noir` <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Film-Noir") 1 else 0)
+genres.df$History <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "History") 1 else 0)
+genres.df$Horror <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Horror") 1 else 0)
+genres.df$Musical <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Musical") 1 else 0)
+genres.df$Mystery <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Mystery") 1 else 0)
+genres.df$News <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "News") 1 else 0)
+genres.df$Romance <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Romance") 1 else 0)
+genres.df$`Sci-Fi` <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Sci-Fi") 1 else 0)
+genres.df$Short <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Short") 1 else 0)
+genres.df$Sport <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Sport") 1 else 0)
+genres.df$Thriller <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Thriller") 1 else 0)
+genres.df$War <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "War") 1 else 0)
+genres.df$Western <- sapply(1:length(genres.df$genres), function(x) if (genres.df[x,1] %like% "Western") 1 else 0)
+# get the mean of imdb score for different genres
+means <- rep(0,23)
+for (i in 1:23) {
+  means[i] <- mean(genres.df$imdb_score[genres.df[i+2]==1])
+}
+# plot the means
+barplot(means, main = "Average imdb scores for different genres")
+
+#There isn’t much difference in the averages of imdb score related to different genres, almost all the averages are in the same range of 6~8. So we think the predictor “genres” can be removed because it’s not really related to the score.
+
+IMDB <- subset(IMDB, select = -c(genres))
+
+```
+
+```{r}
+## Deal with missing values
+colSums(sapply(IMDB, is.na))
+# use heatmap to visualize missing values
+missing.values <- aggr(IMDB, sortVars = T, prop = T, sortCombs = T, cex.lab = 1.5, cex.axis = .6, cex.numbers = 5, combined = F, gap = -.2)
+
+#delet3 rows with missing years and aspect ratio
+IMDB <- IMDB[!is.na(IMDB$title_year), ]
+IMDB <- IMDB[!is.na(IMDB$aspect_ratio), ]
+
+# impute missing value with column median
+IMDB$facenumber_in_poster[is.na(IMDB$facenumber_in_poster)] <- round(mean(IMDB$facenumber_in_poster, na.rm = TRUE))
+
+IMDB$gross[is.na(IMDB$gross)] <- round(median(IMDB$gross, na.rm = TRUE))
+
+IMDB$budget[is.na(IMDB$budget)] <- round(median(IMDB$budget, na.rm = TRUE))
+
+IMDB$num_critic_for_reviews[is.na(IMDB$num_critic_for_reviews)] <- round(median(IMDB$num_critic_for_reviews, na.rm = TRUE))
+
+IMDB$duration[is.na(IMDB$duration)] <- round(median(IMDB$duration, na.rm = TRUE))
+
+IMDB$director_facebook_likes[is.na(IMDB$director_facebook_likes)] <- round(median(IMDB$director_facebook_likes, na.rm = TRUE))
+
+IMDB$actor_3_facebook_likes[is.na(IMDB$actor_3_facebook_likes)] <- round(median(IMDB$actor_3_facebook_likes, na.rm = TRUE))
+
+IMDB$actor_1_facebook_likes[is.na(IMDB$actor_1_facebook_likes)] <- round(median(IMDB$actor_1_facebook_likes, na.rm = TRUE))
+
+IMDB$cast_total_facebook_likes[is.na(IMDB$cast_total_facebook_likes)] <- round(median(IMDB$cast_total_facebook_likes, na.rm = TRUE))
+
+IMDB$actor_2_facebook_likes[is.na(IMDB$actor_2_facebook_likes)] <- round(median(IMDB$actor_2_facebook_likes, na.rm = TRUE))
+
+IMDB$movie_facebook_likes[is.na(IMDB$movie_facebook_likes)] <- round(median(IMDB$movie_facebook_likes, na.rm = TRUE))
+
+IMDB$num_user_for_reviews[is.na(IMDB$num_user_for_reviews)] <- round(median(IMDB$num_user_for_reviews, na.rm = TRUE))
+```
+
+```{r}
+#We find there are still some missing values in content_rating, which are marked as “”.
+#table(IMDB$content_rating)
+#Blanks should be taken as missing value. Since these missing values cannot be replaced with reasonable data, we delete these rows
+IMDB <- IMDB[!(IMDB$content_rating %in% ""),]
+
+IMDB$content_rating[IMDB$content_rating == 'M']   <- 'PG' 
+IMDB$content_rating[IMDB$content_rating == 'GP']  <- 'PG'
+IMDB$content_rating[IMDB$content_rating == 'PG-13']  <- 'PG' 
+IMDB$content_rating[IMDB$content_rating == 'X']   <- 'R'
+
+#We want to replace “Approved”, “Not Rated”, “Passed”, “Unrated” with the most common rating “R”.
+IMDB$content_rating[IMDB$content_rating == 'Approved']  <- 'R' 
+IMDB$content_rating[IMDB$content_rating == 'Not Rated'] <- 'R' 
+IMDB$content_rating[IMDB$content_rating == 'Passed']    <- 'R' 
+IMDB$content_rating[IMDB$content_rating == 'Unrated']   <- 'R' 
+
+levels(IMDB$content_rating) <- c(levels(IMDB$content_rating), "Others")
+IMDB$content_rating[(IMDB$content_rating != 'PG')&(IMDB$content_rating != 'R')] <- 'Others' 
+
+IMDB$content_rating <- factor(IMDB$content_rating)
+table(IMDB$content_rating)
+
+IMDB$PG<-ifelse(IMDB$content_rating == "PG", 1, 0)
+IMDB$R<-ifelse(IMDB$content_rating == "R", 1, 0)
+IMDB <- subset(IMDB, select = -c(content_rating))
+```
+
+```{r}
+# More than 96% movies are colored, which indicates that this predictor is nearly constant. Let’s remove this predictor.
+
+# delete predictor color
+IMDB <- subset(IMDB, select = -c(color))
+
+# Over 95% movies are in English, which means this variable is nearly constant. Let’s remove it.
+
+IMDB <- subset(IMDB, select = -c(language))
+
+# Around 79% movies are from USA, 8% from UK, 13% from other countries. So we group other countries together to make this categorical variable with less levels: USA, UK, Others.
+
+levels(IMDB$country) <- c(levels(IMDB$country), "Others")
+IMDB$country[(IMDB$country != 'USA')&(IMDB$country != 'UK')] <- 'Others' 
+IMDB$country <- factor(IMDB$country)
+# table(IMDB$country)
+IMDB$USA<-ifelse(IMDB$country == "USA", 1, 0)
+IMDB$UK<-ifelse(IMDB$country == "UK", 1, 0)
+IMDB <- subset(IMDB, select = -c(country))
+
+```
+
+```{r}
+# We have 1660 directors, and 3621 actors in this data. Since all the names are so different for the whole dataset, there is no point to use names to predict score.
+
+IMDB <- subset(IMDB, select = -c(director_name, actor_2_name, actor_1_name,
+                                 movie_title, actor_3_name, plot_keywords, 
+                                 movie_imdb_link))
+```
+
+## Data Visualization
+
+```{r}
+ggplot(IMDB, aes(title_year)) +
+  geom_bar() +
+  labs(x = "Year movie was released", y = "Movie Count", title = "Histogram of Movie released") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#From the graph, we see there aren’t many records of movies released before 1980. It’s better to remove those records because they might not be representative.
+
+IMDB <- IMDB[IMDB$title_year >= 1980,]
+
+
+ggplot(IMDB, aes(imdb_score)) + geom_bar() + labs(x = "Score", y = "Count", title = "Histogram of IMDB Score") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+# Remove Highly Correlated Variables
+# plot the correlation heatmap for our data.
+
+ggcorr(IMDB, label = TRUE, label_round = 2, label_size = 3.5, size = 2, hjust = 1) +
+  ggtitle("Correlation Heatmap") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# According to the highest correlation value 0.95, we find actor_1_facebook_likes and actor2 and actor3 is highly correlated with the cast_total_facebook_likes, so we delete actor1 actor2 ad actor3
+
+IMDB <- subset(IMDB, select = -c(actor_1_facebook_likes, actor_2_facebook_likes, actor_3_facebook_likes, num_critic_for_reviews, num_user_for_reviews))
+
+```
+
+```{r}
+
+#we bin the score into 4 buckets: less than 4, 4~6, 6~8 and 8~10, which represents bad, OK, good and excellent respectively.
+
+IMDB$binned_score <- cut(IMDB$imdb_score, breaks = c(0,4,6,8,10))
+
+IMDB <- subset(IMDB, select = -c(imdb_score))
+
+ggplot(IMDB, aes(binned_score)) + geom_bar() + labs(x = "Score", y = "Count", title = "Histogram of IMDB Score") + theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+#split data into training, test sets with the ratio of 8:2.
+
+set.seed(99)
+n = nrow(IMDB)
+train=sample(c(TRUE,FALSE), size=n, 
+             prob=c(.80, .20), rep=TRUE) 
+test=(!train)
+
+y.train = IMDB[train,][,15]
+y.test = IMDB[test,][,15]
+
+train.X = IMDB[train,][,1:14]
+test.X = IMDB[test,][,1:14]
+```
+
+### Trainning
+#### KNN
+
+```{r}
+accu <- function(ct) {
+  return ((ct[1,1]+ct[2,2]+ct[3,3]+ct[4,4])/sum(ct))
+}
+```
+
+```{r}
+### Find best k in knn by grid search
+library(class)
+
+Knn_acc = data.frame('i'=1:25, 'train_acc'=rep(0,25), 'test_acc'=rep(0,25)) # New data frame to store the error value
+
+Knn_train_2 = 0
+knn_test_2 = 0
+max_test_acc = 0
+max_train_acc = 0
+
+for (i in 1:25){
+  Knn_train_2 = knn(train.X, train.X, y.train, k=i)
+  Knn_acc[i,'train_acc'] = mean(Knn_train_2==y.train)
+    
+  knn_test_2 = knn(train.X, test.X, y.train, k=i)
+  Knn_acc[i,'test_acc'] = mean(knn_test_2==y.test)
+    
+  if (Knn_acc[i,'test_acc'] > max_test_acc){
+    max_test_acc = Knn_acc[i,'test_acc']
+    ct1=table(y.test, knn_test_2)
+    best_k = i
+    }
+  
+  if (Knn_acc[i,'train_acc'] > Knn_acc[best_k,'train_acc'] & Knn_acc[i,'test_acc'] == max_test_acc) {
+      max_train_acc = Knn_acc[i,'train_acc']
+      ct1=table(y.test, knn_test_2)
+      
+      best_k = i
+      }
+}
+
+## Plot the training and the testing errors versus 1/K for K=1,..,20
+cat('the best k is:', best_k)
+library(ggplot2)
+ggplot(Knn_acc, aes(x=i)) + geom_point(aes(y=train_acc,col = "Train")) + geom_line(aes(y=train_acc),col = "Blue") + geom_point(aes(y=test_acc,col = "Test")) + geom_line(aes(y=test_acc),col = "Red") + labs(x="K",y="Accuracy",title="KNN Accuracy",fill="")
+
+cat('\naccuracy is:' , accu(ct1))
+```
+
+### Kmeans
+```{r}
+IMDB.s = scale(IMDB[1:14])
+##KMeans
+set.seed(99)
+accuracy1 = 0
+for (i in 1:25)
+  {
+    km.out=kmeans(IMDB.s, centers = i)
+    km.cluster=km.out$cluster
+    # km.clusters
+    #compare the clusters to true labels to check: interpret
+    # cbind(km.clusters, nci.labs)
+    # table(km.clusters,nci.labs)
+    #which cancer clustered is majority, give this same cancer name to the cluster. then obtain accuracy
+    accuracy_1 = sum(km.cluster==as.numeric(as.factor(IMDB[,15])))/length(IMDB[,15])
+     if (accuracy_1 > accuracy1)
+      {
+        accuracy1 = accuracy_1
+        cluster = i
+        km.clusters = km.cluster
+        km = km.out
+      }
+  }
+
+cat("accuracy =" , accuracy1, 'and k = ', cluster)
+
+library(factoextra)
+fviz_cluster(object=km,data=IMDB[,1:14],
+             ellipse.type = "euclid",star.plot=F,repel=F,
+             geom = ("point"),palette='jco',main="",
+             ggtheme=theme_minimal())+
+  theme(axis.title = element_blank())
+```
+
+```{r}
+##KMeans
+library(factoextra)
+fviz_nbclust(IMDB.s,kmeans,method = "silhouette", k.max = 25)
+
+km.out=kmeans(IMDB.s, centers = 2)
+
+
+library(factoextra)
+fviz_cluster(object=km.out,data=IMDB[,1:14],
+             ellipse.type = "euclid",star.plot=F,repel=F,
+             geom = ("point"),palette='jco',main="",
+             ggtheme=theme_minimal())+
+  theme(axis.title = element_blank())
+
+```
+### feature selection
+
+```{r}
+#fit will take time
+library(Boruta)
+set.seed(99)
+bor.fit <- Boruta(as.numeric(as.factor(binned_score))~., data=IMDB,
+                      holdHistory = TRUE) #for large data, FALSE
+
+print(bor.fit)
+plot(bor.fit, las = 2, cex.axis = 0.6, main="Variance Importance")
+
+# Order Variable Importance Scores
+imps <- attStats(bor.fit)
+imps2 = imps[imps$decision != 'Rejected', c('meanImp', 'decision')]
+head(imps2[order(-imps2$meanImp), ])  # descending sort
+
+#get all significant features
+#boruta_signif_var <- getSelectedAttributes(bor.fit, withTentative = FALSE)
+#print(boruta_signif_var) 
+
+#get the model with significant/confirmed features
+# getNonRejectedFormula(bor.fit)
+```
+
+### Improvement
+
+```{r}
+library(UBL)
+## oversampling
+oversampling_IMDB <- RandOverClassif(binned_score~., IMDB, C.perc= "balance", repl=TRUE)
+
+set.seed(99)
+n = nrow(oversampling_IMDB)
+train=sample(c(TRUE,FALSE), size=n, 
+             prob=c(.80, .20), rep=TRUE) 
+test=(!train)
+
+y.train = oversampling_IMDB[train,][,15]
+y.test = oversampling_IMDB[test,][,15]
+
+train.X = oversampling_IMDB[train,][,1:14]
+test.X = oversampling_IMDB[test,][,1:14]
+```
+
+```{r}
+Knn_acc = data.frame('i'=1:25, 'train_acc'=rep(0,25), 'test_acc'=rep(0,25)) # New data frame to store the error value
+
+Knn_train_2 = 0
+knn_test_2 = 0
+max_test_acc = 0
+max_train_acc = 0
+
+for (i in 1:25){
+  Knn_train_2 = knn(train.X, train.X, y.train, k=i)
+  Knn_acc[i,'train_acc'] = mean(Knn_train_2==y.train)
+    
+  knn_test_2 = knn(train.X, test.X, y.train, k=i)
+  Knn_acc[i,'test_acc'] = mean(knn_test_2==y.test)
+    
+  if (Knn_acc[i,'test_acc'] > max_test_acc){
+    max_test_acc = Knn_acc[i,'test_acc']
+    ct1=table(y.test, knn_test_2)
+    best_k = i
+    }
+  
+  if (Knn_acc[i,'train_acc'] > Knn_acc[best_k,'train_acc'] & Knn_acc[i,'test_acc'] == max_test_acc) {
+      max_train_acc = Knn_acc[i,'train_acc']
+      ct1=table(y.test, knn_test_2)
+      
+      best_k = i
+      }
+}
+
+## Plot the training and the testing errors versus 1/K for K=1,..,20
+cat('the best k is:', best_k)
+library(ggplot2)
+ggplot(Knn_acc, aes(x=i)) + geom_point(aes(y=train_acc,col = "Train")) + geom_line(aes(y=train_acc),col = "Blue") + geom_point(aes(y=test_acc,col = "Test")) + geom_line(aes(y=test_acc),col = "Red") + labs(x="K",y="Accuracy",title="KNN Accuracy with Oversampling data",fill="")
+
+cat('\naccuracy is:' , accu(ct1))
+```
+
+```{r}
+### KNN Cross Validation
+library(class)
+set.seed(99)
+k=10
+n = nrow(IMDB)
+folds=sample(1:k,n,replace=TRUE)
+cv.acc=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+knn_data=subset(IMDB, select = -c(aspect_ratio, binned_score))
+binned_score = IMDB$binned_score
+
+for(j in 1:k){
+  set.seed(99)
+  
+  Knn_acc = data.frame('i'=1:20, 'train_acc'=rep(0,20), 'test_acc'=rep(0,20)) # New data frame to store the error value
+
+  Knn_train_2= 0
+  knn_test_2= 0
+  max_test_acc = 0
+  max_train_acc = 0
+  
+  for (i in 1:20){
+    Knn_train_2 = knn(knn_data[folds!=j,], knn_data[folds!=j,], binned_score[folds!=j], k=i)
+    Knn_acc[i,'train_acc'] = mean(Knn_train_2==binned_score[folds!=j])
+      
+    knn_test_2 = knn(knn_data[folds!=j,], knn_data[folds==j,], binned_score[folds!=j], k=i)
+    Knn_acc[i,'test_acc'] = mean(knn_test_2==binned_score[folds==j])
+      
+    if (Knn_acc[i,'test_acc'] > max_test_acc){
+      max_test_acc = Knn_acc[i,'test_acc']
+      cv.acc[j,2] = max_test_acc
+      best_k = i
+      }
+    
+    if (Knn_acc[i,'train_acc'] > Knn_acc[best_k,'train_acc'] & Knn_acc[i,'test_acc'] == max_test_acc){
+        max_train_acc = Knn_acc[i,'train_acc']
+        cv.acc[j,1] = max_train_acc
+        best_k = i
+    }else{
+      cv.acc[j,1] = Knn_acc[i,'train_acc']
+        }
+  }
+}
+
+apply(cv.acc,2,mean)
+```
+```{r}
+library(MASS)
+### logistic regression
+lda_train = lda(binned_score~., data=IMDB[train,])
+
+# train data
+lda_train_pred = predict(lda_train, IMDB[train,])
+LDA_train_error_rate = mean(lda_train_pred$class == y.train)  #1-accuracy = error rate
+
+# test data
+lda_test_pred = predict(lda_train, IMDB[test,])
+LDA_test_error_rate = mean(lda_test_pred$class == y.test)
+LDA_test_error_rate
+```
+
+
