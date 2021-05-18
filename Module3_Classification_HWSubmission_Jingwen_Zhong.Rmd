@@ -1,0 +1,709 @@
+---
+title: "Module 3 Assignment on Classification"
+author: "Jingwen Zhong // Graduate Student"
+date: "3/4/2021"
+#output: pdf_document
+output:
+  pdf_document:
+    latex_engine: xelatex
+  df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, tidy.opts=list(width.cutoff=80))
+```
+
+
+***
+## Module Assignment Questions
+
+## Q1) (*Bayes Classifier*) 
+
+`Bayes classifier` classifies an observation $x_0$ to the class $k$ for which $p_k(x_0)$ is largest, where $\pi_k$ is prior (proportion of $k$ class in all classes over $j$):
+$$
+p_k(x_0) = P(y=k | X=x_0) = \frac {\pi_k \cdot f_k(x_0)}{\sum { \pi_j \cdot f_j(x_0)}}.
+$$
+
+Assume univariate (p=1) observation $x$ in class $k$ is iid from $N(\mu_k, \sigma_k^2)$, $f_k(x)$ is the density function of $x$ with parameters $\mu_k,\sigma_k$.
+
+a. Show that the Bayes classifier in 2-class problem (so $k=0,1$) assigns the observation $x_0$ to the class $k$ for which the discriminant score $\delta$ is largest when $\sigma_0=\sigma_1$ :
+
+$$\delta_k(x_0) = x_0 \frac {\mu_k} {\sigma^2} - \frac {\mu_k^2} {2 \sigma^2} + \log(\pi_k)$$ 
+Proof: 
+
+$$
+f_k(x_0) =  \frac{1}{\sqrt{2\pi}}e^{-\frac{1}{2\sigma_k^2}(x-\mu_k)^2}
+$$
+Then 
+$$
+p_k(x_0) = \frac {\pi_k \cdot f_k(x_0)} {\sum { \pi_j \cdot f_j(x_0)}} = \frac {\pi_k \cdot \frac{1}{\sqrt{2\pi}} e^{-\frac{1}{2\sigma_k^2}(x-\mu_k)^2}} {\sum { \pi_j \cdot \frac{1}{\sqrt{2\pi}} e^{-\frac{1}{2\sigma_k^2}(x-\mu_k)^2}}}
+$$
+$$
+log(p_k(x_0)) = log{(\frac{\pi_k \cdot \frac{1}{\sqrt{2\pi}}e^{-\frac{1}{2\sigma^2}(x-\mu_k)^2}} {\sum {\pi_j \cdot \frac{1}{\sqrt{2\pi}} e^{-\frac{1}{2\sigma^2}(x-\mu_j)^2}}})}
+$$
+$$
+= log(\pi_k \cdot \frac{1}{\sqrt{2\pi}} e^{-\frac{1}{2\sigma^2}(x-\mu_k)^2}) - log(\sum{\pi_j \cdot \frac{1}{\sqrt{2\pi}}e^{-\frac{1}{2\sigma^2}(x-\mu_j)^2}})
+$$
+$$
+= log(\pi_k) + log(\frac{1}{\sqrt{2\pi}}) - \frac{1}{2\sigma^2}(x-\mu_k)^2 - log(\sum {\pi_j \cdot e^{-\frac{1}{2\sigma^2}(x-\mu_j)^2}}) +log(\frac{1}{\sqrt{2\pi}}) 
+$$
+$$
+= log(\pi_k) - \frac{1}{2\sigma^2}(x^2 +\mu_k^2 - 2x\mu_k) - log(\sum {\pi_j \cdot e^{-\frac{1}{2\sigma^2}(x^2 +\mu_j^2 -2x\mu_j)}})
+$$
+$$
+= log(\pi_k) - \frac{1}{2\sigma^2}(\mu_k^2 - 2x\mu_k) - log(\sum {\pi_j \cdot e^{-\frac{1}{2\sigma^2}(\mu_j^2 -2x\mu_j)}})
+$$
+Since the objective is to maximize $log(p_k(x_0))$, and $log(\sum {\pi_j \cdot e^{-\frac{1}{2\sigma^2}(\mu_j^2 -2x\mu_j)}})$ do not depend on k, so we can remove it and then we obtain the discriminant score $log(\pi_k) - \frac{\mu_k^2}{2\sigma^2} + \frac{x_0\mu_k}{\sigma^2}$.
+
+
+***
+b. (Empirical Work) Verify `part a` with a simple empirical demonstration using normal densities in R with `dnorm()` or  generated normal variables from `rnorm()` with $\mu_0 = 10, \mu_1=15, \sigma_0=\sigma_1=2, \pi_0 = 0.3, \pi_1=.7, mu2 = 15, pi2 = 0.7$. Plot the class densities or histograms in color, show the intersection between two class distributions (where the classification boundary starts), check one random value from each class by calculating the discriminant score so to confirm the class it belongs. How would you describe the misclassified values or regions? Calculate the error rate. What is the Bayes error rate?
+```{r}
+### Class densitier
+class0 = rnorm(300, mean =10, sd = 2)
+class1 = rnorm(700, mean =15, sd = 2)
+data = data.frame(class = c(rep("0",300), rep("1",700)), 
+                  Value = c(class0,class1))
+library(plyr)
+mu <- ddply(data, "class", summarise, grp.mean=mean(Value))
+#plot the graph
+library(ggplot2)
+plot = ggplot(data, aes(x=Value,color= class)) + geom_density() + geom_vline(data=mu, aes(xintercept = grp.mean, color = class), linetype="dashed")
+
+### find the intersection
+# first binned the data sets using density
+from <- 5
+to <- 20
+class_0 <- density(class0, from = from, to = to)
+class_1 <- density(class1, from = from, to = to)
+# where the density of the class0 is less than the class1
+idx <- (class_0$y < class_1$y) &(class_0$x > 10) &(class_1$x < 15)
+intersection <- min(class_1$x[idx])
+plot = plot + geom_vline(xintercept = intersection, linetype = 2, size = 0.3, color = "black") + labs(
+title = "Two density curves")
+plot
+cat('\nthe intersection of this 2 classes is', intersection ,'\n')
+
+### try random variable
+n = 1000
+Pi0 = 0.3
+mu0 =10
+Pi1 = 0.7
+mu1 = 15
+sigma = 2
+x0_0 <- sample(1:300, 1)
+x0_1 <- sample(1:700, 1)
+
+### x0 is in class 0
+cat('\nA random number in class0 is:', class0[x0_0])
+delta_0 = class0[x0_0]*(mu0/sigma^2)-(mu0^2/(2*sigma^2))+ log(Pi0)
+delta_1 = class0[x0_0]*(mu1/sigma^2)-(mu1^2/(2*sigma^2))+ log(Pi1)
+cat('\ndiscriminant score when assign x0 to class0 is:', delta_0)
+cat('\ndiscriminant score when assign x0 to class1 is:', delta_1,'\n')
+if(delta_0 > delta_1) {cat(class0[x0_0],'belongs to class0')
+} else{
+  cat(class0[x0_0],'belongs to class1')
+}
+
+### x1 is in class 0
+cat('\n')
+cat('\nA random number in class1 is:', class1[x0_1])
+delta_0 = class1[x0_1]*(mu0/sigma^2)-(mu0^2/(2*sigma^2))+ log(Pi0)
+delta_1 = class1[x0_1]*(mu1/sigma^2)-(mu1^2/(2*sigma^2))+ log(Pi1)
+cat('\ndiscriminant score when assign x0 to class0 is:', delta_0)
+cat('\ndiscriminant score when assign x0 to class1 is:', delta_1,'\n')
+if(delta_0 > delta_1) {cat(class1[x0_1],'belongs to class0')
+} else{
+  cat(class1[x0_1],'belongs to class1')
+}
+
+### error rate
+count = 0
+for (i in 1:n){
+  delta_0 = data$Value[i]*(mu0/sigma^2)-(mu0^2/(2*sigma^2))+ log(Pi0)
+  delta_1 = data$Value[i]*(mu1/sigma^2)-(mu1^2/(2*sigma^2))+ log(Pi1)
+  if(delta_0 > delta_1) { 
+    class = 0
+  } else{
+  class = 1
+  }
+  if(class == data$class[i]){
+    count = count+1
+  }
+}
+error_rate = (n-count)/n
+cat('\n')
+cat('\n')
+cat('Bayes error rate is:', error_rate)
+```
+
+I describe misclassified values or regions as error.
+
+***
+c. Under `part a`, assume $\sigma_0 \neq \sigma_1$.  Derive the Bayes classifier. Show work.
+$Σ_k$ is a covariance matrix for the kth class
+
+$$\sigma_k(x) = log(\pi_k) - \frac{\mu_k^2}{2Σ_k} - \frac{1}{2}log|Σ_k|$$
+***
+d. (BONUS) For p>1, derive the the Bayes classifier. Show work.
+
+\newpage
+
+## Q2) (*Four Models as Classifiers*) 
+
+The `Boston` data from `MASS` has 506 rows and 14 columns with the target variable `crim`, which is per capita crime rate by town. You will fit classification models (`KNN`, `logistic regression`, `LDA`, and `QDA`) in order to predict whether a given suburb has a crime rate above or below .3 per capita crime rate by town. Upper .3 may be labeled as `not really safe town` to raise a family. Use `80%-20% split validation test` approach.    
+
+```{r}
+#Some useful codes
+library(MASS)
+# summary(Boston)
+rm(Boston)
+# detach(Boston)
+attach(Boston)
+# str(Boston)
+# dim(Boston)
+n = nrow(Boston)
+# hist(crim)
+# summary(crim)
+crime_dummy = rep(0, length(crim))
+# quantile(crim, .75)
+crime_dummy[crim>1] = 1
+Boston = data.frame(Boston, crime_dummy)
+# View(Boston)
+# rate in crime_dummy is 0.2509881 (P) if crime_dummy[crim> quantile(crim, .75)] = 1
+# sum(crime_dummy)/length(crime_dummy)
+
+# choose randomly 80% 
+set.seed(99)
+train=sample(c(TRUE,FALSE), size=n, 
+             prob=c(.80, .20), rep=TRUE) #randomly select index whether train or not from row
+test=(!train)
+Boston.train = Boston[train,]
+Boston.test = Boston[test,]
+# dim(Boston.train)
+# dim(Boston.test)
+crime_dummy.train = crime_dummy[train]
+crime_dummy.test = crime_dummy[test]
+# sum(crime_dummy.train)/length(crime_dummy.train)
+# sum(crime_dummy.test)/length(crime_dummy.test)
+
+# (this is another option to split the data into train and test)
+# n_train = ceiling(.80 * n)
+# n_train
+```
+
+
+#### a. Fit the `KNN`, `logistic regression`, `LDA`, and `QDA` models separately using all the predictors. Report  `error rate` for each `train` and `test` data set. Use `error rate` = `1-accuracy`. Based on the test error rates, decide which model is best/better. Why?
+
+```{r}
+### KNN
+library(class)
+set.seed(1)
+
+train.X=cbind(zn,indus,chas,nox,rm,age,dis,rad,tax,ptratio,black,lstat,medv)[train,]
+test.X=cbind(zn,indus,chas,nox,rm,age,dis,rad,tax,ptratio,black,lstat,medv)[!train,]
+
+#train
+KNN_train=knn(train.X, train.X, crime_dummy.train, k=1)
+KNN_train <- as.numeric(as.character(KNN_train))
+KNN_train_error_rate = mean(KNN_train!=crime_dummy.train)
+#test
+KNN_test=knn(train.X, test.X, crime_dummy.train, k=1)
+KNN_test <- as.numeric(as.character(KNN_test))
+KNN_test_error_rate = mean(KNN_test!=crime_dummy.test)
+```
+
+```{r}
+### logistic regression
+glm_train = glm(crime_dummy~ zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat+medv, data=Boston.train, family=binomial)
+
+# train data
+glm_train_prob = predict(glm_train, Boston.train, type="response")
+glm_train_pred=rep(0,length(crime_dummy.train))
+glm_train_pred[glm_train_prob>.5]=1
+# mean(glm_train_pred == crime_dummy.train) accuracy
+LR_train_error_rate = mean(glm_train_pred != crime_dummy.train)  #1-accuracy = error rate
+
+# test data
+glm_test_prob = predict(glm_train, Boston.test, type="response")
+glm_test_pred=rep(0,length(crime_dummy.test))
+glm_test_pred[glm_test_prob>.5]=1
+LR_test_error_rate = mean(glm_test_pred != crime_dummy.test) 
+```
+
+```{r}
+### LDA
+lda_train = lda(crime_dummy~ zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat+medv, data=Boston.train)
+
+# train data
+lda_train_pred = predict(lda_train, Boston.train)
+LDA_train_error_rate = mean(lda_train_pred$class != crime_dummy.train)  #1-accuracy = error rate
+
+# test data
+lda_test_pred = predict(lda_train, Boston.test)
+LDA_test_error_rate = mean(lda_test_pred$class != crime_dummy.test)
+```
+
+```{r}
+### QDA
+
+# calculate correlation matrix
+correlationMatrix <- cor(Boston[,2:14])
+# find attributes that most highly corrected with other attributes
+# delete zn indus tax
+
+qda_train = qda(crime_dummy~ chas+nox+rm+age+dis+rad+ptratio+black+lstat+medv, data=
+                  Boston.train)
+
+# train data
+qda_train_pred = predict(qda_train, Boston.train)
+QDA_train_error_rate = mean(qda_train_pred$class != crime_dummy.train)  #1-accuracy = error rate
+
+# test data
+qda_test_pred = predict(qda_train, Boston.test)
+QDA_test_error_rate = mean(qda_test_pred$class != crime_dummy.test) 
+
+```
+
+```{r}
+table1 = matrix(c(KNN_train_error_rate, LR_train_error_rate,
+                  LDA_train_error_rate, QDA_train_error_rate,
+                  KNN_test_error_rate, LR_test_error_rate,
+                  LDA_test_error_rate, QDA_test_error_rate),4,2)
+
+colnames(table1) = c("train error", "test error")
+rownames(table1) = c( "KNN", "Logistic Regression", "LDA", "QDA")
+table1 = round(table1, 4)
+
+knitr::kable(table1, caption = "The error rate of the train/test using 4 methods")
+```
+
+  Based on the test error rates,  Logistic regression model is best/better, because it has smallest test error rate.
+
+***
+#### b. Using the test data set, obtain confusion matrices and report only `recall`, `precision`, `f1` and `accuracy` metrics in a table. Comment on the findings. Based on this table, decide which model is best/better. Explain why some models do better than others. Which metric would be most important in this context? Why? Is this decision different from that of `part a`? Explain.
+
+```{r}
+perfcheck <- function(ct) {
+  Accuracy <- (ct[1]+ct[4])/sum(ct)
+  Recall <- ct[4]/sum((ct[2]+ct[4]))      #TP/P   or Power, Sensitivity, TPR 
+  Type1 <- ct[3]/sum((ct[1]+ct[3]))       #FP/N   or 1 - Specificity , FPR
+  Precision <- ct[4]/sum((ct[3]+ct[4]))   #TP/P*
+  Type2 <- ct[2]/sum((ct[2]+ct[4]))       #FN/P
+  F1 <- 2/(1/Recall+1/Precision)
+  Values <- as.vector(round(c(Accuracy, Recall, Type1, Precision, Type2, F1),4)) *100
+  Metrics = c("Accuracy", "Recall", "Type1", "Precision", "Type2", "F1")
+  cbind(Metrics, Values)
+  #list(Performance=round(Performance, 4))
+}
+
+###KNN
+ct1=table(crime_dummy.test, KNN_test)
+#perfcheck(ct1)
+
+###LR
+ct2=table(crime_dummy.test, glm_test_pred)
+#perfcheck(ct2)
+
+###LDA
+ct3=table(crime_dummy.test, lda_test_pred$class)
+#perfcheck(ct3)
+
+###QDA
+ct4=table(crime_dummy.test, qda_test_pred$class)
+
+table2 = matrix(c(perfcheck(ct1)[,2][1], perfcheck(ct2)[,2][1],
+                  perfcheck(ct3)[,2][1], perfcheck(ct4)[,2][1],
+                  perfcheck(ct1)[,2][2], perfcheck(ct2)[,2][2],
+                  perfcheck(ct3)[,2][2], perfcheck(ct4)[,2][2],
+                  perfcheck(ct1)[,2][4], perfcheck(ct2)[,2][4],
+                  perfcheck(ct3)[,2][4], perfcheck(ct4)[,2][4],
+                  perfcheck(ct1)[,2][6], perfcheck(ct2)[,2][6],
+                  perfcheck(ct3)[,2][6], perfcheck(ct4)[,2][6]),4,4)
+
+colnames(table2) = c("Accuracy", "Recall", "Precision", "F1")
+rownames(table2) = c( "KNN", "Logistic Regression", "LDA", "QDA")
+
+
+knitr::kable(table2, caption = "The reports of confusion matrices")
+
+```
+
+Based on this table, Logistic Regression model is best/better, since it has highest F1 score. 
+
+When the true decision boundaries are linear, then the LDA and logistic regression approaches will tend to perform well. When the boundaries are moderately non-linear, QDA may give better results. For much more complicated decision boundaries, a non-parametric approach such as KNN can be superior.
+
+F1 is the most important in this context. Precision refers to how many of the data selected as positive by our algorithm are really positive. Recall refers to how many of the data that should actually be Positive are selected by us as Positive, and in this case, I can select everything as positive and get high recall rate but it won't help. F1 Score combines precision and recall, and it should be the best matrix.
+(Accuracy: It refers to how much of all the data we have correctly classified. However, if we only correctly classify no crime without making a judgment on the crime, we can also get a high accuracy rate, but it is not a good model for crime. )
+ 
+This decision is not different from that of `part a`
+
+***
+#### c. Obtain the ROC curve for `logistic regression` based on train data set (plot of FPR vs TPR with classification threshold change). Plot it. Calculate the area under the curve. Explain what the curve and area tell about the model. 
+
+```{r}
+### create confusion matrics
+create_cm <- function(true, pred) {
+  postive_positve = 0
+  positive_negative = 0
+  nagtive_positive = 0
+  nagtive_nagtive = 0
+  for (i in seq(1:length(true))){
+    if (true[i] == 0 & pred[i] == 0) {
+      nagtive_nagtive = nagtive_nagtive + 1
+    }
+    else if (true[i] == 1 & pred[i] == 0) {
+      positive_negative = positive_negative + 1
+    }
+    else if (true[i] == 0 & pred[i] == 1) {
+     
+      nagtive_positive = nagtive_positive + 1
+    }
+    else {
+      postive_positve = postive_positve + 1
+    }
+  }
+  return(matrix(c(nagtive_nagtive, nagtive_positive, positive_negative, postive_positve), nrow = 2, ncol = 2, byrow = T  ))
+}
+
+### calculate the area under the curve on [0,1]
+simple_auc <- function(TPR, FPR){
+  # inputs already sorted, best scores first 
+  dFPR <- c(diff(FPR), 0)
+  dTPR <- c(diff(TPR), 0)
+  abs(sum(TPR * dFPR) + sum(dTPR * dFPR)/2)
+}
+
+### Roc curve function
+create_roc <- function(true, probs, interval, title) {
+  tpr_list = c()
+  fpr_list = c()
+  for (i in seq(0,1, interval)) {
+    pred=rep(0,length(probs))
+    pred[probs > i]=1
+    cm = create_cm(true, pred)
+    TPR = cm[4]/sum((cm[2]+cm[4]))  
+    FPR = cm[3]/sum((cm[1]+cm[3])) 
+    tpr_list = c(tpr_list, TPR)
+    fpr_list = c(fpr_list, FPR)
+  }
+  
+  # auc = abs(sum((fpr_list[2:length(fpr_list)]-fpr_list[1:length(fpr_list)-1])*tpr_list[2:length(tpr_list)]))
+  auc = simple_auc(tpr_list,fpr_list)
+  
+  plot(fpr_list, tpr_list, type = "l", col = "Red", 
+       main = title, xlab = "False Positive Rate", ylab = "True Positive Rate")
+  abline(0,1)
+  legend(0.7, 0.3, sprintf("%3.3f",auc), lty=c(1,1), lwd=c(2.5,2.5), col="blue", title = "AUC")
+}
+
+
+# ROC curve for logistic regression
+cat('plot:')
+create_roc(crime_dummy.train, glm_train_prob, 0.01, 'ROC curve for logistic regression')
+```
+
+An ideal ROC curve will hug the top left corner, and the larger area under the ROC curve the better the classifier, above graph tells that this logistic regression model works very well
+
+***
+#### d. How did you find the optimal $k$ in the `KNN` classifier? Did you use `grid search` or `CV`? If not, use it and revise the results in part a and b. Did the results improve?
+
+I use the grid search to find the optimal k in knn:
+
+```{r}
+### Find best k in knn by grid search and updated k
+
+Knn_error = data.frame('i'=1:50, 'train_error'=rep(0,50), 'test_error'=rep(0,50)) # New data frame to store the error value
+
+Knn_train_2 = 0
+knn_test_2 = 0
+min_test_error = Inf
+min_train_error = 0
+
+for (i in 1:50){
+  Knn_train_2 = knn(train.X, train.X, crime_dummy.train, k=i)
+  Knn_train_2 <- as.numeric(as.character(Knn_train_2))
+  Knn_error[i,'train_error'] = mean(Knn_train_2!=crime_dummy.train)
+    
+  knn_test_2 = knn(train.X, test.X, crime_dummy.train, k=i)
+  knn_test_2 <- as.numeric(as.character(knn_test_2))
+  Knn_error[i,'test_error'] = mean(knn_test_2!=crime_dummy.test)
+    
+  if (Knn_error[i,'test_error'] < min_test_error){
+    min_test_error = Knn_error[i,'test_error']
+    ct1=table(crime_dummy.test, knn_test_2)
+    best_k = i
+    }
+  
+  if (Knn_error[i,'train_error'] < Knn_error[best_k,'train_error'] & Knn_error[i,'test_error'] == min_test_error) {
+      min_train_error = Knn_error[i,'train_error']
+      ct1=table(crime_dummy.test, knn_test_2)
+      best_k = i
+      }
+}
+
+## Plot the training and the testing errors versus 1/K for K=1,..,20
+cat('the best k is:', best_k)
+library(ggplot2)
+ggplot(Knn_error, aes(x=i)) + geom_point(aes(y=train_error,col = "Train")) + geom_line(aes(y=train_error),col = "Blue") + geom_point(aes(y=test_error,col = "Test")) + geom_line(aes(y=test_error),col = "Red") + labs(x="K",y="Error",title="KNN Regression Error",fill="")
+```
+
+```{r}
+### update KNN
+
+### update a)
+table3 = matrix(c(KNN_train_error_rate, Knn_error[best_k,'train_error'], 
+                  LR_train_error_rate, LDA_train_error_rate, QDA_train_error_rate,
+                  KNN_test_error_rate, Knn_error[best_k,'test_error'], 
+                  LR_test_error_rate, LDA_test_error_rate, QDA_test_error_rate),5,2)
+
+colnames(table3) = c("train error", "test error")
+rownames(table3) = c( "old KNN", "KNN", "Logistic Regression", "LDA", "QDA")
+table3 = round(table3, 4)
+knitr::kable(table3, caption = "update a): The error rate of the train/test using 4 methods")
+
+### update b)
+table4 = matrix(c(perfcheck(ct1)[,2][1], perfcheck(ct2)[,2][1],
+                  perfcheck(ct3)[,2][1], perfcheck(ct4)[,2][1],
+                  perfcheck(ct1)[,2][2], perfcheck(ct2)[,2][2],
+                  perfcheck(ct3)[,2][2], perfcheck(ct4)[,2][2],
+                  perfcheck(ct1)[,2][4], perfcheck(ct2)[,2][4],
+                  perfcheck(ct3)[,2][4], perfcheck(ct4)[,2][4],
+                  perfcheck(ct1)[,2][6], perfcheck(ct2)[,2][6],
+                  perfcheck(ct3)[,2][6], perfcheck(ct4)[,2][6]),4,4)
+colnames(table4) = c("Accuracy", "Recall", "Precision", "F1")
+rownames(table4) = c( "KNN", "Logistic Regression", "LDA", "QDA")
+knitr::kable(table4, caption = "update b): The reports of confusion matrices")
+```
+  The results improves, the test error decreased, and KNN is the best model based on the error rate.
+  
+***
+#### e. What are the assumptions in each model? Do your best to describe each. Do your best to check these based on the fit. When you see assumption violation, what would you do to validate the fit?
+
+- Assumptions for KNN: 
+
+    KNN is an non parametric lazy learning algorithm. For non parametric method, it means that it does not make any assumptions on the underlying data distribution.
+
+- Assumptions for Logistic Regression:
+
+    1. The observations are independent of each other
+    2. Little or no multicollinearity among the independent variables
+    3. The independent variables are linearly related to the log odds.
+    4. A large sample size
+
+- Assumptions for LDA:
+  
+    1. Equality of covariances among the predictor variables X across each all levels of Y
+    2. Predictor variables X are drawn from a multivariate Gaussian (aka normal) distribution
+    3. The number of predictor variables (p) to be less then the sample size (n)
+
+- Assumptions for QDA:
+
+    1. Predictor variables X are drawn from a multivariate Gaussian (aka normal) distribution
+    2. The number of predictor variables (p) to be less then the sample size (n)
+    3. Predictors shouldn't be highly correlated
+    
+No violation. When I see assumption violation, I can perform standardization to validate the fit.
+
+\newpage
+
+## Q3) (*Concepts*) 
+
+#### a. What would change if you perform `$k-$fold approach` instead of `validation set` approach for the model fits in Question 2? Just discuss conceptually.
+
+The k-fold CV estimate will be computed by averaging the error rate, the error rate will change, and it might be more percise.
+
+
+***
+#### b. To improve the test error rates in `part a` Q2, what strategies can be applied: list the ideas as many as possible. Try one of them and report the improved test error rate.
+
+- increase the number of observations(n)
+- select right features
+- mix algorithms
+- ensemble methods(bagging/boosting)
+- tuning parameters
+- cross validation
+
+cross validation:
+```{r, echo= FALSE}
+k=10
+set.seed(99)
+folds=sample(1:k,n,replace=TRUE)
+# folds
+```
+
+```{r}
+### KNN
+library(class)
+set.seed(1)
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+knn_data=cbind(zn,indus,chas,nox,rm,age,dis,rad,tax,ptratio,black,lstat,medv)
+
+for(j in 1:k){
+  KNN_train=knn(knn_data[folds!=j,], knn_data[folds!=j,], crime_dummy[folds!=j], k=1)
+  KNN_train <- as.numeric(as.character(KNN_train))
+  cv.errors[j,1] = mean(KNN_train!=crime_dummy[folds!=j])
+  
+  KNN_test=knn(knn_data[folds!=j,], knn_data[folds==j,], crime_dummy[folds!=j], k=1)
+  KNN_test <- as.numeric(as.character(KNN_test))
+  cv.errors[j,2] = mean(KNN_test!=crime_dummy[folds==j])
+  
+  Knn_error = data.frame('i'=1:20, 'train_error'=rep(0,20), 'test_error'=rep(0,20)) # New data frame to store the error value
+
+  Knn_train_2= 0
+  knn_test_2= 0
+  min_test_error = Inf
+  min_train_error = 0
+  
+  for (i in 1:20){
+    Knn_train_2 = knn(knn_data[folds!=j,], knn_data[folds!=j,], crime_dummy[folds!=j], k=i)
+    Knn_train_2 <- as.numeric(as.character(Knn_train_2))
+    Knn_error[i,'train_error'] = mean(Knn_train_2!=crime_dummy[folds!=j])
+      
+    knn_test_2 = knn(knn_data[folds!=j,], knn_data[folds==j,], crime_dummy[folds!=j], k=i)
+    knn_test_2 <- as.numeric(as.character(knn_test_2))
+    Knn_error[i,'test_error'] = mean(knn_test_2!=crime_dummy[folds==j])
+      
+    if (Knn_error[i,'test_error'] < min_test_error){
+      min_test_error = Knn_error[i,'test_error']
+      cv.errors[j,2] = min_test_error
+      best_k = i
+      }
+    
+    if (Knn_error[i,'train_error'] < Knn_error[best_k,'train_error'] & Knn_error[i,'test_error'] == min_test_error){
+        min_train_error = Knn_error[i,'train_error']
+        cv.errors[j,1] = min_train_error
+        best_k = i
+    }else{
+      cv.errors[j,1] = Knn_error[i,'train_error']
+        }
+  }
+}
+
+KNN_error = apply(cv.errors,2,mean)
+```
+
+```{r}
+### logistic regression
+
+set.seed(1)
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+
+for(j in 1:k){
+  glm_train = glm(crime_dummy~ zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat+medv, data=Boston[folds!= j,], family=binomial)
+  
+  glm_train_prob = predict(glm_train, Boston[folds!= j,], type="response")
+  glm_train_pred=rep(0,length(crime_dummy[folds!= j]))
+  glm_train_pred[glm_train_prob>.5]=1
+  cv.errors[j,1] = mean(glm_train_pred != crime_dummy[folds!= j])
+  
+  glm_test_prob = predict(glm_train, Boston[folds == j,], type="response")
+  glm_test_pred=rep(0,length(crime_dummy[folds == j]))
+  glm_test_pred[glm_test_prob>.5]=1
+  cv.errors[j,2]= mean(glm_test_pred != crime_dummy[folds == j]) 
+
+}
+
+LR_error = apply(cv.errors,2,mean)
+
+```
+```{r}
+### LDA
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+for(j in 1:k){
+  lda_train = lda(crime_dummy~ zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat+medv, data=Boston[folds!= j,])
+  
+  lda_train_pred = predict(lda_train, Boston[folds!= j,])
+  cv.errors[j,1] = mean(lda_train_pred$class != crime_dummy[folds != j])
+
+
+  lda_test_pred = predict(lda_train, Boston[folds== j,])
+  cv.errors[j,2] = mean(lda_test_pred$class != crime_dummy[folds == j])
+}
+
+LDA_error = apply(cv.errors,2,mean)
+
+# train data
+  #1-accuracy = error rate
+
+# test data
+
+```
+
+```{r}
+### QDA
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+
+for(j in 1:k){
+  qda_train = qda(crime_dummy~ chas+nox+rm+age+dis+rad+ptratio+black+lstat+medv, data=Boston[folds!= j,])
+  
+  qda_train_pred = predict(lda_train, Boston[folds!= j,])
+  cv.errors[j,1] = mean(qda_train_pred$class != crime_dummy[folds != j])
+
+
+  qda_test_pred = predict(lda_train, Boston[folds== j,])
+  cv.errors[j,2] = mean(qda_test_pred$class != crime_dummy[folds == j])
+}
+
+QDA_error = apply(cv.errors,2,mean)
+```
+
+```{r}
+table1 = matrix(c(KNN_error[1], LR_error[1],
+                  LDA_error[1], QDA_error[1],
+                  KNN_error[2],LR_error[2],
+                  LDA_error[2], QDA_error[2]),4,2)
+
+colnames(table1) = c("train error", "test error")
+rownames(table1) = c( "KNN", "Logistic Regression", "LDA", "QDA")
+table1 = round(table1, 4)
+
+knitr::kable(table1, caption = "The error rate of the train/test using 4 methods")
+```
+
+***
+#### c. Explain with less technical terms an estimation method employed in `binary logistic regression`. `MLE` and `gradient descent` are two of them. 
+
+Gradient descent: 
+
+Suppose we are somewhere on a large mountain. Since we don’t know how to go down the mountain, we decide to walk step by step, and every time we reach a position, we solve the gradient of the current position and follow the negative direction of the gradient. Going this way step by step, until we feel that we have reached the foot of the mountain (the gradient of that position is 0). However if we go on like this, it is possible that we don't go to the foot of the mountain, and stop at the certain lower part of the mountain.
+
+
+***
+#### d. (BONUS) Demonstrate with technical terms and numerically how `MLE` as estimation method employed in `binary logistic regression` works. Explain.  
+
+The idea of maximum likelihood estimation: Ignore low probability, consider high probability events as true events, or use high probability to estimate true events
+
+In binary logistic regression we define the prediction function returns a probability score between 0 and 1, and suppose our threshold was k: 
+$$
+p \leq k, class =0
+$$
+$$
+p \geq k, class =1
+$$
+which means when the probablity of the observation greater that k, we classify it as True(class = 1). When the probablity of the observation less that k, we classify it as False(class = 0)  
+
+\newpage
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+
+### How long did the assignment solutions take?: 15+ hrs
+
+
+***
+## References
+James, G., Witten, D., Hastie, T., & Tibshirani, R. (2013). An introduction to statistical learning (Vol. 112, p. 18). New York: springer.
+
+Retrieved 1st Mar. 2021 from https://towardsdatascience.com/beginners-guide-to-k-nearest-neighbors-in-r-from-zero-to-hero-d92cd4074bdb
+
+Retrieved 1st Mar. 2021 from https://towardsdatascience.com/all-the-annoying-assumptions-31b55df246c3
+
+Retrieved 1st Mar. 2021 from https://www.statisticssolutions.com/assumptions-of-logistic-regression/
+
+Retrieved 1st Mar. 2021 from  http://uc-r.github.io/discriminant_analysis#linear
+
+Retrieved 1st Mar. 2021 from https://www.analyticsvidhya.com/blog/2015/12/improve-machine-learning-results/
+

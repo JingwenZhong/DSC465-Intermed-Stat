@@ -1,0 +1,565 @@
+---
+title: "Midterm-2 Project"
+author: "First and last name: Jingwen Zhong "
+date: "Submission Date: 04/09/2021"
+#output: pdf_document
+output:
+  pdf_document: 
+    latex_engine: xelatex
+    fig_height: 4
+    fig_caption: yes
+  df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, warning = FALSE, message = FALSE, fig.show ='hold',tidy.opts=list(width.cutoff=80))
+```
+
+## Midterm-2 Project Instruction
+
+In `Midterm-1 Project`, you have built predictive models using train and test data sets about college students' academic performances and retention status. You fitted four regression models on \textbf{Term.GPA} and four classification models on \textbf{Persistence.NextYear}. the lowest test score of $MSE_{test}$ achieved on the regression problem was $.991$ using a simple linear regression, and the highest `accuracy` and `F1` scores obtained were $91.15$% and $95.65$%, respectively, with the fit of a multiple logistic regression model (equivalently, LDA and QDA give similar performances). Let's call these scores as baseline test scores.
+
+In `Midterm-2 Project`, you will use tree-based methods (trees, random forests, boosting) and artificial neural networks (Modules 5, 6, and 7) to improve the baseline results. There is no any answer key for this midterm: your efforts and justifications will be graded, pick one favorite optimal tree-based method and one optimal ANN architecture for each regression and classification problem (a total of two models for classification and two models for regression), and fit and play with hyperparameters until you get satisfactory improvements in the test data set.
+
+Keep in mind that $Persistence.NextYear$ is not included in as predictor the regression models so use all the predictors except that on the regression. For the classification models, use all the predictors including the term gpa.
+
+First of all, combine the train and test data sets, create dummies for all categorical variables, which include `Entry_Term`, `Gender`, and `Race_Ethc_Visa`, so the data sets are ready to be separated again as train and test. (Expect help on this portion!) You will be then ready to fit models. 
+
+***
+\section{Tips}
+
+- `Term.gpa` is an aggregated gpa up until the current semester, however, this does not include this current semester. In the modeling of `gpa`, include all predictors except `persistent`.
+- The data shows the `N.Ws`, `N.DFs`, `N.As` as the number of courses withdrawn, D or Fs, A's respectively in the current semester.
+- Some rows were made synthetic so may not make sense: in this case, feel free to keep or remove.
+- It may be poor to find linear association between gpa and other predictors (don't include `persistent` in `gpa` modeling).
+- Scatterplot may mislead since it doesn't show the density.
+- You will use the test data set to asses the performance of the fitted models based on the train data set.
+- Implementing 5-fold cross validation method while fitting with train data set is strongly suggested.
+- You can use any packs (`caret`, `Superml`, `rpart`, `xgboost`, or [visit](https://cran.r-project.org/web/views/MachineLearning.html)  to search more) as long as you are sure what it does and clear to the grader.
+- Include helpful and compact plots with titles.
+- Keep at most 4 decimals to present numbers and the performance scores. 
+- When issues come up, try to solve and write up how you solve or can't solve.
+- Check this part for updates: the instructor puts here clarifications as asked.
+
+
+```{r}
+# Setup and Useful Codes
+
+#Download, Import and Assign 
+train <- read.csv("StudentDataTrain.csv")
+test <- read.csv("StudentDataTest.csv")
+
+#Summarize univariately
+# summary(train) 
+# summary(test) 
+
+#Dims
+# dim(train) #5961x18
+# dim(test) #1474x18
+
+#Without NA's
+# dim(na.omit(train)) #5757x18
+# dim(na.omit(test)) #1445x18
+
+#Perc of complete cases
+# sum(complete.cases(train))/nrow(train)
+# sum(complete.cases(test))/nrow(test)
+
+#Delete or not? In general, we don't delete and use Imputation method to fill na's
+#However, in midterm, you can omit or use any imputation method
+train <- na.omit(train)
+test <- na.omit(test)
+# dim(train)
+
+#Missing columns as percent
+san = function(x) sum(is.na(x))
+# round(apply(train,2,FUN=san)/nrow(train),4) #pers of na's in columns
+# round(apply(train,1,FUN=san)/nrow(train),4) #perc of na's in rows
+
+##
+#you can create new columns based on features
+
+##Make dummy
+#make sure each is numerical and dummy, check what dropped
+
+#train data set with dummies, original cols removed, 
+
+train<-fastDummies::dummy_cols(train, 
+                                 select_columns=c('Entry_Term', 'Gender', 'Race_Ethc_Visa'),
+                                 remove_first_dummy = TRUE, remove_selected_columns=TRUE)
+train$Persistence.NextYear <- as.factor(train$Persistence.NextYear)
+
+
+#test data set with dummies, original cols removed
+test<-fastDummies::dummy_cols(test, 
+                                    select_columns=c('Entry_Term', 'Gender', 'Race_Ethc_Visa'),
+                                    remove_first_dummy = TRUE, remove_selected_columns=TRUE)
+test$Persistence.NextYear <- as.factor(test$Persistence.NextYear)
+
+
+# select columns or select all except some columns
+# adapt
+#delete entry_term_2151 since there are no entry_term_2151 in test dataset
+train = train[, c(which(colnames(train)!="Entry_Term_2151"))]
+
+#I also drop N.PassedCourse and N.CourseTaken
+train = subset(train, select = -c(N.PassedCourse, N.CourseTaken))
+
+test = subset(test, select = -c(N.PassedCourse, N.CourseTaken))
+##check: if col names are same, dim, etc.
+
+#Variable/Column names
+# colnames(train)
+
+
+```
+
+\newpage
+
+\section{A. Improving Regression Models - 15 pts}
+
+- Explore tree-based methods, choose the one that is your favorite and yielding optimal results, and then search for one optimal ANN architecture for the regression problem (so two models to report). Fit and make sophisticated decisions by justifying and writing precisely. Report `the test MSE` results in a comparative table along with the methods so the grader can capture all your efforts on building various models in one table.
+
+***
+\subsection{Solution for Section A.} 
+```{r}
+#drop Persistence.NextYear for regression problem.
+train1 <- train[, c(which(colnames(train)!="Persistence.NextYear"))]
+test1 <- test[, c(which(colnames(test)!="Persistence.NextYear"))]
+```
+
+```{r}
+## boosting forests
+library(gbm)
+
+#shrinkage is lambda in the boost algorithm
+test_mse = Inf
+loop1 = c(2, 4, 6, 8, 10)
+loop2 = c(2, 10, 25, 50, 100)
+
+for(i in loop1){
+  for(j in loop2){
+    ntrees = i*500 #ntree
+    shrinkages = j/1000 #shrinkage
+    
+    boosting_approach=gbm(Term.GPA~., train1,
+                 distribution="gaussian",
+                 n.trees=ntrees,
+                 shrinkage = shrinkages,
+                 interaction.depth=4,
+                 cv.folds = 5)
+   
+    #predict
+    boosting_train_prob = predict(boosting_approach,train1, n.trees= ntrees)
+
+    boosting_test_prob = predict(boosting_approach,test1, n.trees= ntrees) # test_predict
+    
+    #get the MSE
+    boosting_train_mse = mean((boosting_train_prob-train1$Term.GPA)^2) #train_MSE
+    boosting_test_mse = mean((boosting_test_prob-test1$Term.GPA)^2) # test_MSE
+    
+    if (boosting_test_mse < test_mse){
+      test_mse = boosting_test_mse
+      train_mse = boosting_train_mse
+      
+      chosen_ntrees = ntrees
+      chosen_shrinkage = shrinkages
+      chosen_interaction_depth = 4
+    }
+  }
+}
+
+
+boosting_table= matrix(c(chosen_ntrees, chosen_shrinkage, chosen_interaction_depth,
+                 train_mse, test_mse),1,5)
+colnames(boosting_table)=c("ntree", "shrinkage","interaction_depth",
+                  "train_MSE", "test_MSE")
+
+boosting_table = round(boosting_table,4)
+
+knitr::kable(boosting_table, caption = "Optimal Regression Model using Boosting Method")
+```
+
+```{r}
+##Scaling
+
+#do for train and test (combined or separate? choose separate)
+train_sc1 <- train1
+train_sc1[,c(which(colnames(train_sc1)!="Persistence.NextYear"))] <- scale(train_sc1[, c(which(colnames(train_sc1)!="Persistence.NextYear"))])
+#dim(train_sc)
+#View(train_sc)
+
+test_sc1 <- test1
+test_sc1[,c(which(colnames(test_sc1)!="Persistence.NextYear"))] <- scale(test_sc1[, c(which(colnames(test_sc1)!="Persistence.NextYear")) ])
+#dim(test_sc)
+#View(test_sc)
+```
+
+```{r}
+## ANN
+library(neuralnet)
+
+set.seed(99)
+ANN_Regression=neuralnet(Term.GPA~., train_sc1,
+             hidden = 2,
+             act.fct = "logistic",
+             linear.output = TRUE)
+
+# train MSE
+ANN_train_pred = ANN_Regression$net.result
+ANN_train_pred = as.numeric(unlist(ANN_train_pred))
+ANN_train_MSE <- mean((train_sc1$Term.GPA-ANN_train_pred)^2)
+
+# test MSE
+ANN_test_pred=predict(ANN_Regression, test_sc1)
+ANN_test_pred = as.numeric(unlist(ANN_test_pred))
+ANN_test_MSE <- mean((test_sc1$Term.GPA - ANN_test_pred)^2)
+
+```
+
+```{r}
+set.seed(99)
+ANN1_Regression=neuralnet(Term.GPA~., train_sc1,
+             hidden = 5,
+             stepmax = 1e+08,
+             act.fct = "logistic",
+             linear.output = TRUE)
+
+# train MSE
+ANN1_train_pred = ANN1_Regression$net.result
+ANN1_train_pred = as.numeric(unlist(ANN1_train_pred))
+ANN1_train_MSE <- mean((train_sc1$Term.GPA-ANN1_train_pred)^2)
+
+# test MSE
+ANN1_test_pred=predict(ANN1_Regression, test_sc1)
+ANN1_test_pred = as.numeric(unlist(ANN1_test_pred))
+ANN1_test_MSE <- mean((test_sc1$Term.GPA - ANN1_test_pred)^2)
+
+```
+
+```{r}
+set.seed(99)
+ANN2_Regression=neuralnet(Term.GPA~., train_sc1,
+             hidden = c(2,1),
+             stepmax = 1e+08,
+             act.fct = "logistic",
+             linear.output = TRUE)
+
+# train MSE
+ANN2_train_pred = ANN2_Regression$net.result
+ANN2_train_pred = as.numeric(unlist(ANN2_train_pred))
+ANN2_train_MSE <- mean((train_sc1$Term.GPA-ANN2_train_pred)^2)
+
+# test MSE
+ANN2_test_pred=predict(ANN2_Regression,test_sc1)
+ANN2_test_pred = as.numeric(unlist(ANN2_test_pred))
+ANN2_test_MSE <- mean((test_sc1$Term.GPA - ANN2_test_pred)^2)
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+Regression_ANN <- tibble(Network = rep(c("ANN1(h=2)", "ANN2(h=5)",
+                                         "ANN3(h=(2,1))"), each = 2), 
+                         DataSet = rep(c("Train", "Test"), time = 3), 
+                         MSE = c(ANN_train_MSE, ANN_test_MSE, 
+                                 ANN1_train_MSE, ANN1_test_MSE,
+                                 ANN2_train_MSE, ANN2_test_MSE))
+
+Regression_ANN %>% 
+  ggplot(aes(Network, MSE, fill = DataSet)) + 
+  geom_col(position = "dodge") + 
+  ggtitle("ANN_for Regression problem")
+```
+
+For the tree based regression model, I choose boosting method, and I set range of ntrees 1000,2000,3000,4000 to 5000, shrinkage 0.002, 0.01, 0.025, 0.05, 0.1. Then Run the loop to get the minimal Test MSE
+
+For ANN architecture regression model, I tried hidden layer 2, hidden layer 5, and hidden layer(2,1),and  I choose logistic method. From the graph above, for the final optimal model I choose ANN with hidden layer(2,1)
+
+```{r}
+model_table = matrix(c(train_mse, ANN2_train_MSE,
+                       test_mse, ANN2_test_MSE), 2, 2)
+colnames(model_table)=c("Train MSE", "Test MSE")
+rownames(model_table)=c("Boosting", "ANN")
+
+knitr::kable(model_table, caption = "Comparison of 2 optimal models for regression")
+
+```
+
+\newpage
+
+\section{B. Improving Classification Models - 20 pts}
+
+- Explore tree-based methods, choose the one that is your favorite and yielding optimal results, and then search for one optimal ANN architecture for the classification problem (so two models to report). Fit and make sophisticated decisions by justifying and writing precisely. Report `the test accuracy` and `the test F1` results in a comparative table along with the methods so the grader can capture all your efforts in one table.
+
+***
+\subsection{Solution for Section B.} 
+
+```{r}
+#get accuracy score
+cal_acc = function(t) {
+  return((t[1]+t[4])/sum(t))
+}
+
+#calculate F score
+cal_f_score = function(t) {
+  Recall <- t[4]/sum((t[2]+t[4]))      #TP/P Sensitivity, TPR 
+  Precision <- t[4]/sum((t[3]+t[4]))   #TP/P*
+  return (2/(1/Recall+1/Precision))
+}
+```
+
+```{r}
+## random forests
+# try p=sqrt of p
+library(randomForest)
+
+test_accuracy = 0
+test_f_sore = 0
+
+for(i in 2:8){
+  for (j in 2:8){
+    n_tree = i*50
+    
+    rf_approach=randomForest(Persistence.NextYear~., train,
+                          mtry=j, ntree=n_tree,
+                          importance=TRUE, cv.folds = 5)
+    
+    #predict
+    rf_train_pred = predict(rf_approach,train) # train_predict
+    rf_test_pred = predict(rf_approach,test) # test_predict
+    
+    #get the accuracy and F score
+    cm1 = table(rf_train_pred, train$Persistence.NextYear)
+    cm2 = table(rf_test_pred, test$Persistence.NextYear)
+    
+    rf_train_accuray = cal_acc(cm1)
+    rf_test_accuray = cal_acc(cm2)
+    
+    rf_train_f_score = cal_f_score(cm1)
+    rf_test_f_score = cal_f_score(cm2)
+    
+  
+    if (rf_test_accuray > test_accuracy){
+      train_accuracy = rf_train_accuray
+      test_accuracy = rf_test_accuray
+      train_f_score= rf_train_f_score
+      test_f_sore = rf_test_f_score
+      
+      chosen_n_trees = n_tree
+      chosen_mtry = j
+
+    }
+
+  }
+}
+
+rf_table= matrix(c(chosen_n_trees, chosen_mtry,
+                 train_accuracy, test_accuracy, 
+                 train_f_score, test_f_sore),1,6)
+colnames(rf_table)=c("ntree", "mtry","train_accuracy",
+                  "highest_test_accuracy", "train_f_score", "test_f_score")
+
+rf_table = round(rf_table,4)
+
+knitr::kable(rf_table, caption = "Optimal Classification Models Using Random Forest")
+```
+
+```{r}
+##Scaling
+train_sc2 <- train
+train_sc2[,c(which(colnames(train_sc2)!="Persistence.NextYear"))] <- scale(train_sc2[, c(which(colnames(train_sc2)!="Persistence.NextYear"))])
+
+
+test_sc2 <- test
+test_sc2[,c(which(colnames(test_sc2)!="Persistence.NextYear"))] <- scale(test_sc2[, c(which(colnames(test_sc2)!="Persistence.NextYear")) ])
+
+```
+
+```{r}
+##ANN
+library(neuralnet)
+set.seed(99)
+ANN_classification=neuralnet(Persistence.NextYear~., train_sc2, 
+                 hidden=2, 
+                 stepmax = 1e+08, #the maximum steps for the training of the neural network. 
+                 act.fct = "logistic",
+                 linear.output = FALSE, #for classification, FALSE
+                 err.fct = "ce"
+                 )
+
+#Predict
+ANN_train_prob <- predict(ANN_classification,train_sc2)[,2]
+ANN_train_pred <- ifelse(ANN_train_prob>0.5, 1, 0)
+
+ANN_test_prob <- predict(ANN_classification,test_sc2)[,2]
+ANN_test_pred <- ifelse(ANN_test_prob>0.5, 1, 0)
+
+
+#get the accuracy and F score
+cm3 = table(ANN_train_pred, train_sc2$Persistence.NextYear)
+cm4 = table(ANN_test_pred, test_sc2$Persistence.NextYear)
+
+ANN_train_accuray = cal_acc(cm3)
+ANN_test_accuray = cal_acc(cm4)
+
+ANN_train_f_score = cal_f_score(cm3)
+ANN_test_f_score = cal_f_score(cm4)
+
+```
+
+```{r}
+set.seed(99)
+ANN1_classification=neuralnet(Persistence.NextYear~., train_sc2, 
+                 hidden=5, 
+                 stepmax = 1e+08, #the maximum steps for the training of the neural network. 
+                 act.fct = "logistic",
+                 linear.output = FALSE, #for classification, FALSE
+                 err.fct = "ce"
+                 )
+
+#Predict
+ANN1_train_prob <- predict(ANN1_classification,train_sc2)[,2]
+ANN1_train_pred <- ifelse(ANN1_train_prob>0.5, 1, 0)
+
+ANN1_test_prob <- predict(ANN1_classification,test_sc2)[,2]
+ANN1_test_pred <- ifelse(ANN1_test_prob>0.5, 1, 0)
+
+
+#get the accuracy and F score
+cm3 = table(ANN1_train_pred, train_sc2$Persistence.NextYear)
+cm4 = table(ANN1_test_pred, test_sc2$Persistence.NextYear)
+
+ANN1_train_accuray = cal_acc(cm3)
+ANN1_test_accuray = cal_acc(cm4)
+
+ANN1_train_f_score = cal_f_score(cm3)
+ANN1_test_f_score = cal_f_score(cm4)
+
+```
+
+```{r}
+set.seed(99)
+ANN2_classification=neuralnet(Persistence.NextYear~., train_sc2, 
+                 hidden=c(2,1), 
+                 stepmax = 1e+08, #the maximum steps for the training of the neural network. 
+                 act.fct = "logistic",
+                 linear.output = FALSE, #for classification, FALSE
+                 err.fct = "ce"
+                 )
+
+#Predict
+ANN2_train_prob <- predict(ANN2_classification,train_sc2)[,2]
+ANN2_train_pred <- ifelse(ANN2_train_prob>0.5, 1, 0)
+
+ANN2_test_prob <- predict(ANN2_classification,test_sc2)[,2]
+ANN2_test_pred <- ifelse(ANN2_test_prob>0.5, 1, 0)
+
+
+#get the accuracy and F score
+cm5 = table(ANN2_train_pred, train_sc2$Persistence.NextYear)
+cm6 = table(ANN2_test_pred, test_sc2$Persistence.NextYear)
+
+ANN2_train_accuray = cal_acc(cm5)
+ANN2_test_accuray = cal_acc(cm6)
+
+ANN2_train_f_score = cal_f_score(cm5)
+ANN2_test_f_score = cal_f_score(cm6)
+
+```
+
+```{r}
+library(ggplot2)
+Classification_ANN <- tibble(Network = rep(c("ANN1(h=2)", "ANN2(h=5)", "ANN3(h=(2,1))"), each = 4), 
+                             DataSet = rep(c("Train_Accuracy", "Test_Accuracy", "Train_F_score", "Test_F_score"), time = 3),
+                             data = c(ANN_train_accuray, ANN_test_accuray,
+                                      ANN_train_f_score, ANN_test_f_score,
+                                      ANN1_train_accuray, ANN1_test_accuray,
+                                      ANN1_train_f_score, ANN1_test_f_score,
+                                      ANN2_train_accuray, ANN2_test_accuray,
+                                      ANN2_train_f_score, ANN2_test_f_score))
+
+Classification_ANN %>% 
+  ggplot(aes(Network, data, fill = DataSet)) + 
+  geom_col(position = "dodge") + 
+  ggtitle("ANN for Classification problem")
+```
+
+For the tree based classification model, I choose random forest method, and I set range of ntrees from 100 to 400, mtry from 2 to 8 since the square root of length(train is around 4). Then Run the loop to get the highest accuracy and F score.
+
+For ANN architecture regression model, I tried hidden layer 2,  hidden layer 5, and hidden layer(2,1), and from the graph above I should choose ANN with hidden layer 2 but the test accuracy is higher than the training one, which is not acceptable, same as ANN with hidden layer(2,1). So I can only choose ANN with hidden layer 5.
+
+```{r}
+model_table = matrix(c(train_accuracy, ANN1_train_accuray,
+                       test_accuracy,ANN1_test_accuray,
+                       train_f_score, ANN1_train_f_score,
+                       test_f_sore, ANN1_test_f_score), 2, 4)
+colnames(model_table)=c("Train accuracy", "Test accuracy", "Train F score", "Test F score" )
+rownames(model_table)=c("Random Forest", "ANN")
+
+knitr::kable(model_table, caption = "Comparison of 2 optimal models for classification")
+
+```
+
+\newpage
+
+\section{C. Importance Analyses - 15 pts}
+
+- Part a. Perform an importance analysis on the best regression model: which three predictors are most important or effective to explain the response variable? Find the relationship and dependence of these predictors with the response variable. Include graphs and comments.
+
+***
+\subsection{solution for Section C. Part a} 
+
+```{r}
+cat("The importance of predictors in the boosting for regression:\n")
+boosting_approach=gbm(Term.GPA~., train1,
+                 distribution="gaussian",
+                 interaction.depth=4
+                 )
+
+boosting_summary = summary(boosting_approach)
+head(boosting_summary, n = 3)
+```
+The first three will be SAT_Total, HSGPA and Perc.PassedEnrolledCourse by a function in "Generalized Boosted Models: A guide to the gbm package" page 10 to determine the, and the importance.rel.inf is quite large for the first 2.
+
+***
+- Part b. Perform an importance analysis on the best classification model: which three predictors are most important or effective to explain the response variable? Find the relationship and dependence of these predictors with the response variable. Include graphs and comments.
+
+\subsection{solution for Section C. Part b} 
+```{r}
+cat("The importance of predictors in the random forests for classification:\n")
+
+rf_approach=randomForest(Persistence.NextYear~., train)
+varImpPlot(rf_approach)
+predictor_impo = importance(rf_approach)
+predictor_impo = data.frame(predictor_impo)
+predictor_impo = predictor_impo[order(-predictor_impo$MeanDecreaseGini), ,drop=FALSE]
+
+head(predictor_impo, n = 3)
+```
+
+The first three will be Term.GPA, HSGP, SAT_Total by using Gini index to determine the importance, and the Gini Index is quite large for these three.
+
+***
+- Part c. Write a conclusion paragraph. Evaluate overall what you have achieved. Did the baselines get improved? Why do you think the best model worked well or the models didn't work well? How did you handle issues? What could be done more to get `better` and `interpretable` results? Explain with technical terms.
+
+\subsection{solution for Section C. Part c}\
+
+The baseline for regression get improved by using boosting method, but the test MSE does not change that much while it takes so much long time, so I guess it's not worth it. Moreover, it does not have much improvement when using ANN. One of the reasons that my ANN does not work well might be because I didn't try much hyperparameters (because it takes so long to run one ANN). The baselines for classification get improved by using random forest and also has some problem with ANN. Another reason I think may cause ANN method fails is the scale method I use, maybe I should use the math function in the useful link that professor provided us in the tips.  By preprocessing the data, I think there are no big issues in these models(although it still has some issue such like the variables are not correlated to eachother), but I still don't know how to tune parameters, the way I use to find the hyperparameters is try some of them, but I don't think it is a efficient and right way to do it.
+
+\newpage
+
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### Write your pair you worked at the top of the page. If no pair, it is ok. List other fiends you worked with (name, last name): 
+
+### Disclose the resources or persons if you get any help: Chenglu Xia
+
+### How long did the assignment solutions take?: 10hrs
+
+
+***
+## References
+...

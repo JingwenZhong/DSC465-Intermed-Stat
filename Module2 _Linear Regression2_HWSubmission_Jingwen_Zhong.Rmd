@@ -1,0 +1,635 @@
+---
+title: "Module 2 Assignment on Linear Regression - 2 - V1"
+author: "Jingwen Zhong // Graduate Student"
+date: "2/24/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy=TRUE, error = TRUE, tidy.opts=list(width.cutoff=80))
+```
+
+## Module Assignment Questions
+
+In this assignment, you will use the `Auto` data set with $7$ variables (one response `mpg` and six numerical) and $n=392$ vehicles. For sake of simplicity, categorical variables were excluded. Before each randomization used, use `set.seed(99)` so the test results are comparable.
+
+## Q1) (*Forward and Backward Selection*) 
+
+In `Module 1 Assignment`, `Q2`, you fitted `Model 3` with `mpg` as the response and the six numerical variables as predictors. This question involves the use of `forward` and `backward` selection methods on the same data set.
+
+```{r eval=FALSE, echo= FALSE, results='hide'}
+#This is setup to start
+library(ISLR)
+Model_3 = mpg ~ horsepower+year+cylinders+displacement+weight+acceleration
+Model_3.fit = lm(Model_3, data=Auto)
+summary(Model_3.fit)
+# Or, prefer this restructuring way
+# by excluding categorical variables:
+# Make sure AutoNum is a data.frame
+AutoNum = Auto[, !(colnames(Auto) %in% c("origin", "name"))]
+Model_full = mpg ~ . #you can write models in this way to call later
+Model_full.fit = lm(Model_full, data=AutoNum)
+summary(Model_Full.fit)
+```
+
+```{r , echo= FALSE, eval=FALSE, results='hide'}
+# helpful code from the r lab: review it
+Model_Full = mpg ~ .
+regfit.m1=regsubsets(Model_Full, data=AutoNum, nbest=1, 
+                     nvmax=6, method="forward")
+reg.summary=summary(regfit.m1)
+reg.summary
+names(reg.summary)
+reg.summary$adjr2
+coef(regfit.m2, 1:6) #coefficients of all models built
+```
+
+```{r,echo= FALSE}
+library(ISLR)
+library(leaps) #regsubsets
+
+AutoNum = Auto[, !(colnames(Auto) %in% c("origin", "name"))]
+n <- nrow(Auto)
+```
+
+a. Using `OLS`, fit the model with all predictors on `mpg`. Report the predictors'  coefficient estimates, $R_{adj}^2$, and $MSE$. Note: The method in `lm()` is called ordinary least squares (OLS).
+
+```{r, echo= FALSE}
+
+Model_Full = mpg ~ . #you can write models in this way to call later
+Model_Full.fit = lm(Model_Full, data=AutoNum)
+# summary(Model_Full.fit)
+table1 = matrix(c(coef(Model_Full.fit)[2:7],
+                summary(Model_Full.fit)$adj.r.squared,
+                anova(Model_Full.fit)[7, 3]),1,8)
+colnames(table1) = c("coefficient of cylinders", "displacement", "horsepower","weight","acceleration", "year", "R^2adj", "MSE")
+rownames(table1) = c( "OLS model")
+table1 = round(table1, 4)
+
+knitr::kable(table1, caption = "Report of Model_Full fitted by OLS ")
+```
+
+***
+b. Using `forward selection method` from `regsubsets()` and `method="forward"`, fit MLR models and select the `best` subset of predictors. Report the best model obtained from the default setting by including the predictors' coefficient estimates, $R_{adj}^2$, and $MSE$.
+
+```{r, echo= FALSE}
+Model_Full = mpg ~ .
+
+regfit.m1=regsubsets(Model_Full, data=AutoNum, nbest=1, 
+                     nvmax=6, method="forward")
+
+reg.summary=summary(regfit.m1)
+
+
+#using BIC to select the best model
+# plot(reg.summary$bic,xlab="Number of Variables",ylab="BIC",type='l')
+# points(which.min(reg.summary$bic),reg.summary$bic[which.min(reg.summary$bic)],col="red",cex=2,pch=2)
+
+
+### reg.summary
+#names(reg.summary)
+
+# coef(regfit.m1, 1:6) #coefficients of all models built
+
+table2 = matrix(c(coef(regfit.m1, 2)[2],coef(regfit.m1, 2)[3],
+                  reg.summary$adjr2[2],reg.summary$rss[2]/(n-3)),1,4)
+colnames(table2) = c("Coefficient of weight", "Coefficient of year", "R^2adj", "MSE")
+rownames(table2) = c( "forward selection Best_Model")
+table2 = round(table2, 4)
+
+knitr::kable(table2, caption = "Report of Best Model fitted by forward selection method")
+
+```
+
+***
+c. What criterion had been employed to find the best subset? What other criteria exist? Explain.
+
+I used BIC to find the best subset, BIC is derived from a Bayesian, and also is estimates of test MSE.
+
+We can also use $C_p$, AIC, and adjusted $R^2$ to find the best models. $C_p$ is estimates of test MSE too, it adds a penalty to the training SSE in order to adjust for the fact that the training error tends to underestimate the test error; AIC is defined for a large class of models fit by maximum likelihood. for $C_p$, AIC and BIC, the smaller value is, the lower test error the model has. However, a large value of adjusted R2 indicates a model with a small test error
+
+***
+d. Using `backward selection method` from `regsubsets()` and `method="backward"`, fit MLR models and select the `best` subset of predictors. Report the best model obtained from the default setting by including predictors, their coefficient estimates, $R_{adj}^2$, and $MSE$.
+```{r, echo= FALSE}
+
+regfit.m2=regsubsets(Model_Full, data=AutoNum, nbest=1, 
+                     nvmax=6, method="backward")
+
+reg.summary2=summary(regfit.m2)
+
+#using BIC to select the best model
+#plot(reg.summary2$bic,xlab="Number of Variables",ylab="BIC",type='l')
+#points(which.min(reg.summary2$bic),reg.summary2$bic[which.min(reg.summary2$bic)],col="red",cex=2,pch=20)
+
+## reg.summary2
+# coef(regfit.m1, 1:6) #coefficients of all models built
+
+table3 = matrix(c(coef(regfit.m2, 2)[2],coef(regfit.m2, 2)[3],
+                  reg.summary2$adjr2[2],reg.summary2$rss[2]/(n-3)),1,4)
+colnames(table3) = c("Coefficient of weight", "Coefficient of year", "R^2adj", "MSE")
+rownames(table3) = c( "backward selection Best_Model")
+table2 = round(table2, 4)
+
+knitr::kable(table2, caption = "Report of Best Model fitted by backward selection method")
+
+```
+
+***
+e. Compare the results obtained from `OLS`, `forward` and `backward` selection methods (parts a, b and d): What changed? Which one(s) is better? Comment and justify.
+
+Compared The model we used in OLS method to The best model of forward and backward selection methods, everything changed. 
+
+In OLS method, we use full model which contains 6 predictors. The best models of forward and backward selection methods are the same, they both contains 2 predictors which are weight and year. 
+
+The absolute value of coefficients of Weights is a little smaller in the best models of forward and backward selection methods which means weights become a little less important, and the absolute value of year is larger, which means when year increase 1, mpg increase more.
+
+$R^2_adj$ and MSE changed too. $R^2_adj$ become larger, and MSE become smaller, which makes the best models of forward and backward selection methods better than the full model fitted by OLS.
+
+\newpage
+## Q2) (*Cross-Validated with k-Fold*) 
+
+What changes in model selection results and the coefficient estimates when cross-validated set approach is employed? Specifically, we will use $k$-fold cross-validation (`k-fold CV`) here.
+
+```{r, echo= FALSE}
+k=5
+set.seed(99)
+folds=sample(1:k,n,replace=TRUE)
+# folds
+```
+
+a. Using the $5$-fold CV approach, fit the OLS MLR model on `mpg` including all the predictors (don't use any subset selection). Report all the predictors' coefficient estimates in the OLS model (using all folds), the averaged $MSE_{train}$, and the averaged $MSE_{test}$. 
+```{r, echo= FALSE}
+# define cv.errors matrix
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+coefficient=matrix(NA, k, 6, dimnames=list(NULL, paste(1:6)))
+# cv.errors
+
+# Training_Model_Full.fit = lm(Model_Full, data=AutoNum[folds!= 1,])
+
+# now, looping/k-fold procedure
+
+### MSE_{train}
+for(j in 1:k){
+   Q2_Model1 = lm(mpg~., data=AutoNum[folds!= j,]) #train
+   coefficient[j,1]= Q2_Model1$coefficients[2]
+   coefficient[j,2]= Q2_Model1$coefficients[3]
+   coefficient[j,3]= Q2_Model1$coefficients[4]
+   coefficient[j,4]= Q2_Model1$coefficients[5]
+   coefficient[j,5]= Q2_Model1$coefficients[6]
+   coefficient[j,6]= Q2_Model1$coefficients[7]
+   pred_train = predict(Q2_Model1, AutoNum[folds!=j,]) #pred train
+   cv.errors[j,1] = mean((AutoNum$mpg[folds!=j]-pred_train)^2)
+   
+   pred_test = predict(Q2_Model1, AutoNum[folds==j,]) #pred test
+   cv.errors[j,2] = mean((AutoNum$mpg[folds==j]-pred_test)^2)
+}
+
+
+#table
+table4 = matrix(c(coefficient[,1],coefficient[,2],coefficient[,3], coefficient[,4], coefficient[,5],coefficient[,6],cv.errors[,1],cv.errors[,2]),5,8)
+
+rownames(table4) = c("fold 1","fold 2","fold 3","fold 4","fold 5")
+colnames(table4)= c("coefficient of cylinders", "displacement", "horsepower", "weight", "acceleration", "year" ,"MSE_train", "MSE_test")
+table4 = round(table4, 4)
+
+knitr::kable(table4, caption = "Full model fitted by OSL using 5-fold cv")
+
+```
+
+***
+b. Using the $5$-fold CV approach and `forward selection method`, fit MLR models on `mpg` and select the `best` subset of predictors. Report the best model obtained from the default setting by including the predictors' coefficient estimates (this depends on what predictors you keep in the model), the averaged $MSE_{train}$, and the averaged $MSE_{test}$.
+```{r, echo= FALSE}
+# there is no predict method for regsubsets. We need to write one ourselves
+predict.regsubsets=function(object, newdata, id, ...){
+  form=as.formula(object$call[[2]])
+  mat=model.matrix(form,newdata)
+  coefi=coef(object,id=id)
+  xvars=names(coefi)
+  mat[,xvars]%*%coefi #prediction or fitted results
+}
+```
+
+```{r, echo= FALSE}
+# define cv.errors matrix
+cv.errors_train=matrix(NA, k, 6, dimnames=list(NULL, paste(1:6)))
+cv.errors_test=matrix(NA, k, 6, dimnames=list(NULL, paste(1:6)))
+
+# cv.errors
+### MSE_{train}
+for(j in 1:k){
+  Q2_Model2=regsubsets(mpg ~ .,data=AutoNum[folds!=j,],
+                      nvmax=6, method = "forward")
+  for(i in 1:6){
+    
+    #MSE_{test}
+    pred_train = predict(Q2_Model2, AutoNum[folds!=j,], id=i)
+    cv.errors_train[j,i] = mean((AutoNum$mpg[folds!=j]-pred_train)^2)
+    
+    #MSE_{test}
+    pred_test = predict(Q2_Model2, AutoNum[folds==j,], id=i)
+    cv.errors_test[j,i]=mean((AutoNum$mpg[folds==j]-pred_test)^2)
+  }
+}
+
+MSE_train_Q2_Model2 = apply(cv.errors_train,2,mean)
+MSE_test_Q2_Model2 = apply(cv.errors_test,2,mean)
+
+# plot of test MSE and choose best model
+
+plot(MSE_test_Q2_Model2,type='b')
+points(which.min(MSE_test_Q2_Model2),MSE_test_Q2_Model2[which.min(MSE_test_Q2_Model2)],col="red",cex=2,pch=20)
+
+#best model 
+reg.best=regsubsets(mpg~.,data=AutoNum, nvmax=6, method ="forward")
+
+#table
+
+cat('The coefficient for best model is \n')
+coef(reg.best,2)[2:3]
+
+#knitr::kable(table5, caption = " Forwards:  coefficient of predictors")
+
+table5 = matrix(c(MSE_train_Q2_Model2,MSE_test_Q2_Model2),6,2)
+colnames(table5)=c("MSE_train", "MSE_test")
+rownames(table5)=c("1 p", "2 p", "3 p","4 p","5 p","6 p")
+table5 = round(table5, 4)
+
+knitr::kable(table5, caption = " forward: 5 fold's Average MSE for different number of predictors")
+```
+
+***
+c. Compare the $MSE_{test}$'s. Explain.
+
+$MSE_test$ of the best model fitted by forward selection using k-fold cv is smaller than the Full model fitted by OSL using k-fold cv. We use $MSE_test$ to decide which model is better, and the smaller $MSE_test$ the better the model is, so best model fitted by forward selection is better.
+
+***
+d. Using the $5$-fold CV approach and `backward selection method`, fit MLR models on `mpg` and select the `best` subset of predictors. Report the best model obtained from the default setting by including the predictors' coefficient estimates, the averaged $MSE_{train}$, $MSE_{test}$.
+```{r, echo= FALSE}
+# define cv.errors matrix
+cv.errors_train=matrix(NA, k, 6, dimnames=list(NULL, paste(1:6)))
+cv.errors_test=matrix(NA, k, 6, dimnames=list(NULL, paste(1:6)))
+# coefficient=matrix(NA, k, 6, dimnames=list(NULL, paste(1:6)))
+
+# cv.errors
+### MSE_{train}
+for(j in 1:k){
+  # using 6 models obtained from (k-1)-fold data
+  Q2_Model2=regsubsets(mpg ~ .,data=AutoNum[folds!=j,],
+                      nvmax=6, method = "backward")
+  #cat('\n')
+  #cat("fold:", j)
+  #cat('\n')
+  for(i in 1:6){
+
+    #table=  table(c(coef(Q2_Model2,i)[2:7]),useNA = c("no"))
+    #print(table)
+    #data = na.omit((coef(Q2_Model2,i)[2:7]))
+    #print(data.matrix(data.frame(data)))
+    #train MSE
+    pred_train = predict(Q2_Model2, AutoNum[folds!=j,], id=i)
+    cv.errors_train[j,i] = mean((AutoNum$mpg[folds!=j]-pred_train)^2)
+    
+    #MSE_{test}
+    pred_test = predict(Q2_Model2, AutoNum[folds==j,], id=i)
+    cv.errors_test[j,i]=mean((AutoNum$mpg[folds==j]-pred_test)^2)
+  }
+}
+
+cv_errors_train = colMeans(cv.errors_train)
+cv_errors_test = colMeans( cv.errors_test)
+
+# MSE_train_Q2_Model2
+# MSE_test_Q2_Model2
+# plot of test MSE and choose best model
+#par(mfrow=c(1,1))
+plot(MSE_test_Q2_Model2,type='b')
+points(which.min(MSE_test_Q2_Model2),MSE_test_Q2_Model2[which.min(MSE_test_Q2_Model2)],col="red",cex=2,pch=20)
+
+#best model 
+reg.best=regsubsets(mpg~.,data=AutoNum, nvmax=6, method ="backward")
+
+
+cat('The coefficient for best model is \n')
+coef(reg.best,2)
+
+#table
+table5 = matrix(c(cv_errors_train,cv_errors_test),6,2)
+colnames(table5)=c("MSE_train", "MSE_test")
+rownames(table5)=c("1 p", "2 p", "3 p","4 p","5 p","6 p")
+table5 = round(table5, 4)
+
+knitr::kable(table5, caption = " backwards: 5 fold's Average MSE for different number of predictors")
+```
+
+***
+e. Did you come up with a different model on parts b and d? Are the predictors and their coefficient estimates same? Compare and explain.
+
+I did not come up with a different model on part b and d, the predictors and their coefficient estimates are the same. We use the forward and backward selection with k-fold cv to find the minimal avarage MSE of testing data set, and in both models, the MSE of the model with 2 predictors(weights and year) is the smallest. Since we choose the same model, the predictors and their coefficient estimates should be the same.
+
+***
+f. Which fitted model is better among parts a, b, and d? Why? Justify. 
+
+The model with 2 predictors(weights and year) is better, because it has smaller $MSE_test$
+
+\newpage
+## Q3) (*Shrinkage Methods*) 
+
+Results for `OLS`, `lasso`, and `ridge` regression methods can be comparable. Now, you are expected to observe that ridge and lasso regression methods may reduce some coefficients to zero (so in this way, these features are eliminated) and shrink coefficients of other variables to low values. 
+
+In this exercise, you will analyze theses estimation and prediction methods (OLS, ridge, lasso) on the `mpg` in the Auto data set using $k-fold$ cross-validation test approach.
+
+```{r, echo= FALSE}
+library(glmnet) #ridge regression
+x=model.matrix(mpg~.,AutoNum)[,-1]
+y=AutoNum$mpg
+```
+
+a. Fit a ridge regression model on the entire data set (including all six predictors, don't use yet any validation approach), with the optimal $\lambda$ chosen by `cv.glmnet()`. Report $\hat \lambda$, the predictors' coefficient estimates, and $MSE$.
+```{r, echo= FALSE}
+# alpha=0 the ridge penalty.
+set.seed(99)
+cv.out=cv.glmnet(x,y,alpha=0)
+bestlam=cv.out$lambda.min
+ridge.mod=glmnet(x,y,alpha=0,lambda=bestlam) 
+# coef(ridge.mod)
+ridge.pred=predict(ridge.mod,s=bestlam,newx=x)
+MSE = mean((ridge.pred-y)^2) #test MSE associated with this best lambda above
+
+
+#table
+table6 = matrix(c(bestlam, coef(ridge.mod)[2:7],MSE),1,8)
+colnames(table6)=c("Best_lambda","coefficient of cylinders", "displacement", "horsepower", "weight", "acceleration", "year" ,"MSE")
+rownames(table6)=c("ridge regression model")
+table6 = round(table6, 4)
+
+knitr::kable(table6, caption = "Full model fitted by ridge regression")
+
+
+
+```
+
+***
+b. Fit a lasso regression model on the entire data set (including all six predictors, don't use yet any validation approach), with the optimal $\lambda$ chosen by `cv.glmnet()`. Report $\hat \lambda$, the predictors' coefficient estimates, and $MSE$.
+```{r, echo= FALSE}
+#alpha=1 is the lasso penalty
+set.seed(99)
+cv.out=cv.glmnet(x,y,alpha=1)
+bestlam=cv.out$lambda.min
+
+lasso.mod=glmnet(x,y,alpha=1,lambda=bestlam) 
+
+lasso.pred=predict(lasso.mod,s=bestlam,newx=x)
+MSE = mean((lasso.pred-y)^2) #test MSE associated with this best lambda above
+
+
+#table
+table7 = matrix(c(bestlam, coef(lasso.mod)[2:7],MSE),1,8)
+colnames(table7)=c("Best_lambda","coefficient of cylinders", "displacement", "horsepower", "weight", "acceleration", "year" ,"MSE")
+rownames(table7)=c("lasso regression")
+table7 = round(table7, 4)
+
+knitr::kable(table7, caption = "Full model fitted by lasso regression")
+
+
+```
+
+
+***
+c. Compare the parts a and b in Q3 to part a in Q1. What changed? Comment.
+
+Everything changed. MSE: ridge>OLS>lasso, which make the model fitted by lasso regression a better choice. displacement and horsepower in the model fitted by lasso becomes 0 which means displacement and horsepower are eliminated.The acceleration in ridge model become negative.
+
+Both Ridge and lasso regression are very similar to least squares, except that the coefficients ridge and lasso are estimated by minimizing a slightly different quantity, and lead the coefficient estimates can be shrunk towards zero. We can see that in ridge regression model, no coefficient of predictors equals to 0, it because  The penalty $λ\sumβ_j^2$ in ridge regression will shrink all of the coefficients towards zero, but it will not set any of them exactly to zero (unless $λ = ∞$).
+
+
+***
+d. How accurately can we predict `mpg`? Using the three methods (OLS, ridge and lasso) with all predictors, you will fit and test using $5$-fold cross-validation approach with the optimal $\lambda$ chosen by `cv.glmnet()`. For each, report the averaged train and test errors ($MSE_{train}$, $MSE_{test}$):
+
+   1) Fit an `OLS` model.
+   2) Fit a `ridge` regression model.
+   3) Fit a `lasso` regression model.
+   
+```{r, echo= FALSE}
+#OLS
+
+# define cv.errors matrix
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+accuracy=matrix(NA, k, 1, dimnames=list(NULL, paste(1)))
+
+for(j in 1:k){
+   Q2_Model1 = lm(mpg~., data=AutoNum[folds!= j,]) 
+
+   pred_train = predict(Q2_Model1, AutoNum[folds!=j,]) #pred train
+   cv.errors[j,1] = mean((AutoNum$mpg[folds!=j]-pred_train)^2)
+   
+   pred_test = predict(Q2_Model1, AutoNum[folds==j,]) #pred test
+   cv.errors[j,2] = mean((AutoNum$mpg[folds==j]-pred_test)^2)
+   accuracy[j]= sum(AutoNum$mpg[folds==j] == pred_test)/length(y)
+}
+
+MSE_OLS = apply(cv.errors,2,mean)
+
+average_accuracy_OLS = apply(accuracy,2,mean)
+cat(' MSE_Train and MSE_test of OLS model is:', MSE_OLS[1], 'and', MSE_OLS[2],"and \n average accuracy is:", average_accuracy_OLS)
+```
+
+```{r, echo= FALSE}
+# Ridge
+
+# define cv.errors matrix
+cv.errors = matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+accuracy=matrix(NA, k, 1, dimnames=list(NULL, paste(1)))
+
+for(j in 1:k){
+  set.seed(99)
+  cv.out=cv.glmnet(x[folds!= j,],y[folds!= j],alpha=0)
+  bestlam=cv.out$lambda.min
+  
+  ridge.mod=glmnet(x[folds!= j,],y[folds!= j],alpha=0,lambda=bestlam) 
+  
+  ridge.pred=predict(ridge.mod,s=bestlam,newx=x[folds!= j,]) #pred train
+  cv.errors[j,1] = mean((y[folds!=j]-ridge.pred)^2)
+  
+  ridge.pred=predict(ridge.mod,s=bestlam,newx=x[folds== j,]) #pred test
+  cv.errors[j,2] = mean((y[folds==j]-ridge.pred)^2)
+  accuracy[j] = sum(y[folds==j] == ridge.pred)/length(y)
+  }
+
+average_accuracy_ridge.mod = apply(accuracy,2,mean)
+MSE_ridge.mod = apply(cv.errors,2,mean)
+
+cat(' MSE_Train and MSE_test of Ridge regression model is:', MSE_ridge.mod[1], 'and', MSE_ridge.mod[2],"and \n average accuracy is:", average_accuracy_ridge.mod)
+```
+
+```{r, echo= FALSE}
+# lasso
+# define cv.errors matrix
+cv.errors = matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+accuracy=matrix(NA, k, 1, dimnames=list(NULL, paste(1)))
+
+for(j in 1:k){
+  set.seed(99)
+  cv.out=cv.glmnet(x[folds!= j,],y[folds!= j],alpha=1)
+  bestlam=cv.out$lambda.min
+  
+  lasso.mod=glmnet(x[folds!= j,],y[folds!= j],alpha=1,lambda=bestlam) #train
+  
+  lasso.pred=predict(lasso.mod,s=bestlam,newx=x[folds!= j,]) #pred train
+  cv.errors[j,1] = mean((y[folds!=j]-lasso.pred)^2)
+  
+  lasso.pred=predict(lasso.mod,s=bestlam,newx=x[folds== j,]) #pred test
+  cv.errors[j,2] = mean((y[folds==j]-lasso.pred)^2)
+  
+  accuracy[j] = sum(y[folds==j] == lasso.pred)/length(y)
+  }
+
+
+
+average_accuracy_lasso.mod = apply(accuracy,2,mean)
+MSE_lasso.mod = apply(cv.errors,2,mean)
+
+cat(' MSE_Train and MSE_test of Lasso Regression model is:', MSE_lasso.mod[1], 'and', MSE_lasso.mod[2], "and \n average accuracy is:", average_accuracy_lasso.mod)
+```
+
+***
+e. Write an overall report on part d by addressing the inquiry, `how accurately can we predict mpg?`. Is there much difference among the test errors resulting from these three approaches? Show your comprehension. 
+
+By looking at the MSE of test set, Lasso Regression performs well because it has smaller MSE of test set, it means the error between the real values and the predict values is smaller. By calculating how many values are predicted exactly right in these 3 models(see average accuracy in part d), turns out there are no value is predicted exactly right. I think we can only discuss how close the predicted values are to the real value by calculating the MSE.
+
+Besides, there are predictors that have coefficients that are equal zero in lasso regression model, so lasso regression can perform better in this situation. However, the results of these 3 models are not too much different, one reason might be our training set is not large enough. Also, by increasing k to 10, I got larger MSE in all these 3 models( not showing here).
+
+```{r, echo= FALSE}
+#table
+table8 = matrix(c(MSE_OLS[1], MSE_ridge.mod[1], MSE_lasso.mod[1], 
+                  MSE_OLS[2], MSE_ridge.mod[2], MSE_lasso.mod[2]),3,2)
+colnames(table8)=c("MSE_train", "MSE_test")
+rownames(table8)=c("OLS", "Ridge", "Lasso")
+table8 = round(table8, 4)
+
+knitr::kable(table8, caption = "Reports of MSE_train and MSE_test on 3 models")
+
+```
+
+f. (BONUS) Propose a different model (or set of models) that seem to perform well on this data set, and justify your answer.
+
+I choose Principal Components Regression, and find the MSE of this model is bigger than other models in previous questions.
+```{r, echo= FALSE}
+library(pls)
+```
+
+```{r, echo= FALSE}
+
+pcr.fit=pcr(mpg ~., data= AutoNum, scale=TRUE ,validation ="CV")
+# summary (pcr.fit)
+validationplot(pcr.fit ,val.type="MSEP")
+
+
+table9 = matrix(c(coef(pcr.fit)[1:6],mean((pcr.fit$residuals)^2)),1,7)
+colnames(table9)=c("coefficient of cylinders", "displacement", "horsepower", "weight", "acceleration", "year" ,"MSE")
+rownames(table9)=c("Principal Components Regression full model")
+table9 = round(table9, 4)
+
+knitr::kable(table9, caption = "Full model fitted by Principal Components Regression")
+
+```
+
+***
+g. (BONUS) Include categorical variables to the models you built in part d, Q3. Report.
+```{r, echo= FALSE}
+Auto_new <- Auto[, -9]
+x=model.matrix(mpg~.,Auto_new)[,-1]
+y=Auto_new$mpg
+```
+
+```{r, echo= FALSE}
+#OLS
+
+cv.errors=matrix(NA, k, 2, dimnames=list(NULL, paste(1:2)))
+accuracy=matrix(NA, k, 1, dimnames=list(NULL, paste(1)))
+
+for(j in 1:k){
+   Q2_Model1 = lm(mpg~., data=AutoNum[folds!= j,]) 
+
+   pred_train = predict(Q2_Model1, AutoNum[folds!=j,]) #pred train
+   cv.errors[j,1] = mean((AutoNum$mpg[folds!=j]-pred_train)^2)
+   
+   pred_test = predict(Q2_Model1, AutoNum[folds==j,]) #pred test
+   cv.errors[j,2] = mean((AutoNum$mpg[folds==j]-pred_test)^2)
+   accuracy[j]= sum(AutoNum$mpg[folds==j] == pred_test)/length(y)
+}
+
+MSE_OLS = apply(cv.errors,2,mean)
+
+#ridge
+
+for(j in 1:k){
+  set.seed(99)
+  cv.out=cv.glmnet(x[folds!= j,],y[folds!= j],alpha=0)
+  bestlam=cv.out$lambda.min
+  
+  ridge.mod=glmnet(x[folds!= j,],y[folds!= j],alpha=0,lambda=bestlam) 
+  
+  ridge.pred=predict(ridge.mod,s=bestlam,newx=x[folds!= j,]) #pred train
+  cv.errors[j,1] = mean((y[folds!=j]-ridge.pred)^2)
+  
+  ridge.pred=predict(ridge.mod,s=bestlam,newx=x[folds== j,]) #pred test
+  cv.errors[j,2] = mean((y[folds==j]-ridge.pred)^2)
+  accuracy[j] = sum(y[folds==j] == ridge.pred)/length(y)
+  }
+
+MSE_ridge.mod = apply(cv.errors,2,mean)
+
+
+# lasso
+
+for(j in 1:k){
+  set.seed(99)
+  cv.out=cv.glmnet(x[folds!= j,],y[folds!= j],alpha=1)
+  bestlam=cv.out$lambda.min
+  
+  lasso.mod=glmnet(x[folds!= j,],y[folds!= j],alpha=1,lambda=bestlam) #train
+  
+  lasso.pred=predict(lasso.mod,s=bestlam,newx=x[folds!= j,]) #pred train
+  cv.errors[j,1] = mean((y[folds!=j]-lasso.pred)^2)
+  
+  lasso.pred=predict(lasso.mod,s=bestlam,newx=x[folds== j,]) #pred test
+  cv.errors[j,2] = mean((y[folds==j]-lasso.pred)^2)
+  
+
+  }
+
+
+MSE_lasso.mod = apply(cv.errors,2,mean)
+
+
+table8 = matrix(c(MSE_OLS[1], MSE_ridge.mod[1], MSE_lasso.mod[1], 
+                  MSE_OLS[2], MSE_ridge.mod[2], MSE_lasso.mod[2]),3,2)
+colnames(table8)=c("MSE_train", "MSE_test")
+rownames(table8)=c("OLS", "Ridge", "Lasso")
+table8 = round(table8, 4)
+
+knitr::kable(table8, caption = "Reports of MSE_train and MSE_test on 3 models")
+
+```
+
+***
+h. (GOLDEN BONUS) Propose a model (or set of models) that seem to perform well on this data set, and justify your answer. Make sure that you are evaluating model performance using $5$-fold cross-validation approach. You can transform the data, scale and try any methods. When $MSE_{test}$ is the lowest (under the setting of Q3, part d) in the class, your HW assignment score will be 100% (20 pts).  
+
+***
+i. (BONUS) You can make a hybrid design in model selection using all the methods here in a way that yields better results. Show your work, justify and obtain better results in part d, Q3.
+
+
+\newpage
+
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### How long did the assignment work take?: 10 hrs
+
+
+***
+## References
+James, G., Witten, D., Hastie, T., & Tibshirani, R. (2013). An introduction to statistical learning (Vol. 112, p. 18). New York: springer.

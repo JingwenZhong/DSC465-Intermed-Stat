@@ -1,0 +1,233 @@
+---
+title: "Module 9 Assignment on Unsupervised Methods: PC and Clustering"
+author: "Jingwen Zhong // Graduate Student"
+date: "5/2/2021"
+#output: pdf_document
+output:
+  pdf_document: 
+    latex_engine: xelatex
+    fig_height: 4
+    fig_caption: yes
+  df_print: paged
+  word_document: default
+---
+```{r setup, include=FALSE}
+library(tidyverse)
+library(formattable)
+library(MASS)
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, warning = FALSE, message = FALSE, fig.show ='hold',tidy.opts=list(width.cutoff=80))
+```
+
+## Module Assignment Questions
+## *Applications*
+
+You will perform four unsupervised methods on a high dimensional data: `PCA`, `K-Means` clustering, `hierarchical` clustering, and one of `DBSCAN` and `GMM` clusterings. The data is the `NCI60` cancer cell line microarray data set, which consists of 6,830 gene expression measurements on 64 cancer cell lines. Each cell line is labeled with a cancer type: there is 14 imbalanced types. In performing unsupervised methods, we don't use labels. But after performing the clustering, we can check to see the extent to which these cancer types agree with the results of these unsupervised techniques. You will do this as well.
+
+Do scaling before performing any unsupervised methods. Then, apply each method by justifying how you use and by including informative plots and summaries: each method has parameters and hyperparameters, consider these. Show how you decide optimal numbers of clusters. There is no unique answer key: any decision should be justified as long as you reflect our lab discussions and details. Don't include irrelevant and uncommented results. Make write-ups and outputs readable and compact. Include only necessary codes and outputs in minimalist format.
+
+Fit the four models (1-4) below by including narratives in terms of data reduction and clustering, and answer the questions (5, 6):
+
+```{r}
+#import data
+library(ISLR)
+# dim(NCI60)
+nci.labs=NCI60$labs
+# unique(nci.labs) #14 types of cancer labeled (use this to check the clusters)
+# length(unique(nci.labs)) #14
+nci.data=NCI60$data
+# dim(nci.data) #64 6830
+# length(nci.labs) #64
+table(nci.labs) 
+#scaled data
+nci.data.s = scale(nci.data)
+
+#Mahalanobis distance formula/function here
+```
+
+\newpage
+#### 1. PCA
+
+```{r}
+##1.PC
+pr.out=prcomp(nci.data, scale=TRUE)
+# summary(pr.out)
+# 
+#Plot percentagplot(pr.out)es
+pve=100*pr.out$sdev^2/sum(pr.out$sdev^2)
+par(mfrow=c(1,2))
+plot(pve,  type="o", ylab="PVE", xlab="Principal Component", col="blue")
+plot(cumsum(pve), type="o", ylab="Cumulative PVE", xlab="Principal Component", col="brown3")
+#see first 32 PCs get 80%
+# cumsum(pve)
+
+#Color the cancer types
+Cols=function(vec){
+    cols=rainbow(length(unique(vec)))
+    return(cols[as.numeric(as.factor(vec))])
+  }
+
+
+#Plot PC1, PC2, PC3 with true cancer types: do these cluster and do good job? 
+par(mfrow=c(1,2))
+plot(pr.out$x[,1:2], col=Cols(nci.labs), pch=19,xlab="Z1",ylab="Z2")
+plot(pr.out$x[,c(1,3)], col=Cols(nci.labs), pch=19,xlab="Z1",ylab="Z3")
+#These PCs take account of at most 20%. Get insights.
+
+# can distinguish 2 groups without class knowledge
+pairs(pr.out$x[,1:4], col=Cols(nci.labs))
+
+#obtain loadings and interpret:
+hist(as.vector(pr.out$rotation[,1])) #PC1 loadings
+
+#make clusters on observations and check?
+#make clusters on features and check?
+
+```
+  I decide 32 PCs is enough, because it can explain more than 80% variations. I use Hierarchical along with PCA to get the accuracy.
+  
+  For the hyperparameter k, I use loop from 1 to 20 to check the k with the highest accuracy. I didn't choose method for hclust.
+
+```{r}
+#How agree hc to km
+
+hc.out=hclust(dist(pr.out$x[,1:32]))
+
+accuracy0 = 0
+for (i in 1:20)
+  {
+    clusters <- cutree(hc.out, i)
+    # clusters
+    # plot(iris, col = clusters)
+    accuracy_1 = sum(clusters==as.numeric(as.factor(nci.labs)))/length(nci.labs)
+    if (accuracy_1 > accuracy0)
+      {
+        accuracy0 = accuracy_1
+        cluster = i
+        hc.clusters = clusters
+      }
+    }
+
+cat("accuracy =" , accuracy0, 'and k = ', cluster)
+```
+
+#### 2. K-Means
+```{r}
+##KMeans
+set.seed(99)
+#try cluster 4:14 to get the best 14
+accuracy1 = 0
+for (i in 1:20)
+  {
+    km.out=kmeans(nci.data.s, centers = i)
+    km.cluster=km.out$cluster
+    # km.clusters
+    #compare the clusters to true labels to check: interpret
+    # cbind(km.clusters, nci.labs)
+    # table(km.clusters,nci.labs)
+    #which cancer clustered is majority, give this same cancer name to the cluster. then obtain accuracy
+    accuracy_1 = sum(km.cluster==as.numeric(as.factor(nci.labs)))/length(nci.labs)
+     if (accuracy_1 > accuracy1)
+      {
+        accuracy1 = accuracy_1
+        cluster = i
+        km.clusters = km.cluster
+        km = km.out
+      }
+  }
+
+cat("accuracy =" , accuracy1, 'and k = ', cluster)
+
+plot(nci.data, col = km$cluster)
+points(km$centers, col = 1:3, pch = 8, cex = 2)
+```
+
+  For the hyperparameter k, I use loop from 1 to 20 to check the k with the highest accuracy.
+
+
+#### 3. Hierarchical
+```{r}
+d <- dist(nci.data.s,
+           method = "euclidean" #method = "euclidean", manhattan"
+           )
+#d
+# length(d2)
+fitH <- hclust(d, "ward.D2")
+plot(fitH, labels=nci.labs , main="ward.D2", xlab="", sub="",ylab="", hang = -1)
+
+
+accuracy2 = 0
+for (i in 1:20)
+  {
+    clusters <- cutree(fitH, k = i)
+    # clusters
+    # plot(iris, col = clusters)
+    accuracy_1 = sum(clusters==as.numeric(as.factor(nci.labs)))/length(nci.labs)
+    if (accuracy_1 > accuracy2)
+      {
+        accuracy2 = accuracy_1
+        cluster = i
+        hc.clusters = clusters
+      }
+    }
+
+cat("accuracy =" , accuracy2, 'and k = ', cluster)
+
+```
+
+For the hyperparameter k, I use loop from 1 to 20 to check the k with the highest accuracy. I choose ward.D2 method for hclust.
+
+
+#### 4. GMM
+```{r}
+library(mclust)
+fitM <- Mclust(nci.data.s, G = 9)
+accuracy3 = sum(fitM$classification==as.numeric(as.factor(nci.labs)))/length(nci.labs)
+cat("accuracy =" , accuracy3, 'and k = ', 9)
+plot(fitM, what = "BIC")
+
+```
+For the hyperparameter G, I didn't use a loop to get it, because it said no storage when I loop through 1 to 20, but by hand checking I choose 9 to be my cluster and it has a high accuracy.
+
+\newpage
+#### 5. Do the comparison of the four methods above in a table by fitted clusters and true clusters: did clustering methods discover correct clusters? Include an accuracy table or a graph that compares the results obtained from the four methods. Comment.\
+
+```{r}
+table = matrix(c(accuracy0, accuracy1, accuracy2, accuracy3),4,1)
+
+colnames(table)=c("Accuracy")
+rownames(table)=c("PCA with Hierarchical","Kmeans", "Hierarchical", "GMM")
+
+knitr::kable(table, caption = "Accuracy table")
+```
+The clustering methods did a very bad job, the accuracy is only round 0.22, and it didn't discover correct clusters. 
+
+***
+#### 6. What insights/contextual conclusions did you get about the data from the PCA application? Explain. (this may overlap with your PCA narratives, here, be more contextual on the results of PCA in determining clusters of cancer types.)\
+
+  more than 80% of the variance is explained by the first 32 principal components, and there is an elbow after the 7th component in PVE, but since the baseline of cumulative PVE is 80%, I still use 32 principle components. 
+  
+  from the graph of PC1, PC2, PC3 with true cancer types, it shows that the same colors do try to cluster together.
+
+***
+#### 7. BONUS. Use any `manifold` method to cluster the data in terms of cancer types. Then check with the true labels. Does it discover? Explain and include graphs.\ 
+
+BONUS:
+
+\newpage
+
+### Write comments, questions: ...
+
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### List the fiends you worked with (name, last name): Chenglu Xia
+
+### Disclose the resources or persons if you get any help: ...
+
+### How long did the assignment solutions take?: 10hrs
+
+
+***
+## References
+...

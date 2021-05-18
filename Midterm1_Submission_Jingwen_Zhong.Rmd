@@ -1,0 +1,768 @@
+---
+title: "Midterm-1 Project Portion - Version 1"
+author: "First and last name: Jingwen Zhong //
+          Pair's first and last name: XiaCheng Lu"
+date: "Submission Date: 03/10/2021"
+#output: pdf_document
+output:
+  pdf_document:
+    latex_engine: xelatex
+  df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, warning = FALSE, message = FALSE, fig.show ='hold',  tidy.opts=list(width.cutoff=80))
+```
+
+***
+## Midterm-1 Project Instruction
+
+Midterm-1 has test and project portions. This is the project portion. Based on what we covered on the modules 1, 2 and 3, you will reflect statistical methods by analyzing data and building predictive models using train and test data sets. The data sets are about college students and their academic performances and retention status, which include categorical and numerical variables. 
+
+Throughout the data analysis, we will consider only two response variables, 1) current GPA of students, a numerical response variable, call it \textbf{y1}=\textbf{Term.GPA} and 2) Persistence of student for following year, a binary response variable (0: not persistent on the next term, 1:persistent on the next term), call it \textbf{y2}=\textbf{Persistence.NextYear}.
+
+Briefly, you will fit regression models on $y1$ and classification models on $y2$ using the subset of predictors in the data set. Don't use all predictors in any model.
+
+***
+
+\section{A. Touch and Feel the Data - 5 pts}
+
+- Import Data Set and Set Up:
+
+Open the data set \textbf{StudentDataTrain.csv}. Be familiar with the data and variables. Start exploring it. Practice the code at the bottom and do the set-up.
+
+- Do Exploratory Data Analysis:
+
+Start with Exploratory Data Analysis (EDA) before running models. Visually or aggregatedly you can include the description and summary of the variables (univariate, and some bivariate analyses). If you keep this part very simple, it is ok. 
+
+\subsection{Section A solution}
+
+```{r}
+# Preprocessing:
+
+getwd() #gets what working directory is
+# Create a RStudio Project and work under it.
+
+#Download, Import and Assign 
+train <- read.csv("StudentDataTrain.csv")
+test <- read.csv("StudentDataTest.csv")
+
+library(ggplot2)
+ggplot(data=train, aes(x=Race_Ethc_Visa,y=..count..))+ geom_bar(stat="count", position = position_dodge())+ geom_text(aes(label=..count..),stat="count",vjust=-0.2,cex=3)+ggtitle("Race of train")
+
+ggplot(data=test, aes(x=Race_Ethc_Visa,y=..count..))+ geom_bar(stat="count", position = position_dodge())+ geom_text(aes(label=..count..),stat="count",vjust=-0.2,cex=3)+ggtitle("Race of test")
+
+ggplot(data=train, aes(x=Entry_Term,y=..count..))+ geom_bar(stat="count", position = position_dodge())+ geom_text(aes(label=..count..),stat="count",vjust=-0.2,cex=3)+ggtitle("Entry_Term of train")
+
+ggplot(data=test, aes(x=Entry_Term,y=..count..))+ geom_bar(stat="count", position = position_dodge())+ geom_text(aes(label=..count..),stat="count",vjust=-0.2,cex=3)+ggtitle("Entry_Term of test")
+
+#Summarize univariately
+# summary(train) 
+# summary(test)
+
+#Dims
+# dim(train) #5961x18
+# dim(test) #1474x18
+
+#Without NA's
+# dim(na.omit(train)) #5757x18
+# dim(na.omit(test)) #1445x18
+
+#Perc of complete cases: (number of without NA)/All
+# sum(complete.cases(train))/nrow(train)
+# sum(complete.cases(test))/nrow(test)
+
+#Missing columns as percent
+# san = function(x) sum(is.na(x))
+# round(apply(train,2,FUN=san)/nrow(train),4) #pers of na's in columns
+# round(apply(train,1,FUN=san)/nrow(train),4) #perc of na's in rows
+
+# Don't delete NA!! #Use Imputation method to fill na's
+  #This is delete
+  # train <- na.omit(train)
+  # test <- na.omit(test)
+  # dim(train) 5757x18
+
+```
+
+```{r}
+## Imputation missing value
+#Train
+
+train[,3][is.na(train[,3])] = median(train[,3], na.rm = T)
+train[,4][is.na(train[,4])] = median(train[,4], na.rm = T)
+train[,15][is.na(train[,15])] = 0
+# which(is.na(train), arr.ind = T)
+
+train$Gender <- ifelse(train$Gender == "Male", 1, 0)
+
+train$Afram<-ifelse(train$Race_Ethc_Visa == "Afram", 1, 0)
+train$Asian<-ifelse(train$Race_Ethc_Visa == "Asian", 1, 0)
+train$Hispanic<-ifelse(train$Race_Ethc_Visa == "Hispanic", 1, 0)
+train$Multi<-ifelse(train$Race_Ethc_Visa == "Multi", 1, 0)
+
+train$Entry_Term <-as.numeric(factor(train$Entry_Term))
+
+train <- na.omit(train)  # delete rows that have null gender
+
+#Test
+# which(is.na(test), arr.ind = T)
+
+test[,15][is.na(test[,15])] = 0
+
+test$Gender <- ifelse(test$Gender == "Male", 1, 0)
+
+test$Afram<-ifelse(test$Race_Ethc_Visa == "Afram", 1, 0)
+test$Asian<-ifelse(test$Race_Ethc_Visa == "Asian", 1, 0)
+test$Hispanic<-ifelse(test$Race_Ethc_Visa == "Hispanic", 1, 0)
+test$Multi<-ifelse(test$Race_Ethc_Visa == "Multi", 1, 0)
+
+test$Entry_Term <- as.numeric(factor(test$Entry_Term))
+
+test <- na.omit(test) # delete rows that have null gender
+
+```
+
+```{r}
+cat("Belew are  some graphs of (response variables mostly) training set")
+
+##Summarize
+#GPA
+# hist(y1,xlab = 'GPA')
+ggplot(train,aes(y=Term.GPA))+geom_boxplot()+ggtitle("boxplot of GPA in train dataset")
+#boxplot(y1_train,ylab='GPA')
+#title('boxplot of GPA in training dataset')
+
+#Persistence: 0 - not persistent (drop), 1 - persistent (stay)
+#table(y2_train)
+aa=table(train$Persistence.NextYear, train$Gender)
+# prop.table(aa,2)
+# barplot(aa,beside=TRUE,legend=TRUE) #counts
+barplot<-barplot(t(aa),xlab="Persistence", ylab="counts",beside=TRUE,legend=TRUE, args.legend=c(x=2,y=1900), col=c("pink","steelblue"),main= "Student Count and percentage with Persistence across Gender for training")
+# locator(1)
+lables <- round(prop.table(aa,2),4)
+text(barplot, t(aa),labels= lables, pos=1,cex=1)
+text(barplot, t(aa),labels= t(aa), pos=1,offset=2, cex=1)
+
+knitr::kable(addmargins(aa), caption = "Student Count with Persistence and Gender for training dataset")
+
+## Persistence by Year
+ggplot(data=train, aes(x=Persistence.NextYear,y=..count..,fill=Entry_Term))+
+  geom_bar(stat="count", position = position_dodge())+  #stat="bin"
+  facet_grid(train$Entry_Term)+
+  geom_text(aes(label=..count..),stat="count",vjust=-0.2,cex=3)+
+              ggtitle("Persistence by Year for train dataset")
+```
+
+```{r}
+cat("Belew are  some graphs of (response variables mostly) testing set")
+##Summarize
+#GPA
+ggplot(test,aes(y=Term.GPA))+geom_boxplot()+ggtitle("boxplot of GPA in testing dataset")
+#Persistence: 0 - not persistent (drop), 1 - persistent (stay)
+aa=table(test$Persistence.NextYear, test$Gender)
+barplot<-barplot(t(aa),xlab="Persistence", ylab="counts",beside=TRUE,legend=TRUE, args.legend=c(x=2,y=500), col=c("pink","steelblue"),main= "Student Count and percentage with Persistence across Gender for testing")
+locator(1)
+lables <- round(prop.table(aa,2),4)
+text(barplot, t(aa),labels= lables, pos=1, offset=0.2, cex=0.8)
+text(barplot, t(aa),labels= t(aa), pos=1,offset=1, cex=0.8)
+
+knitr::kable(addmargins(aa), caption = "Student Count with Persistence and Gender for testing")
+## Persistence by Year
+ggplot(data=test, aes(x=Persistence.NextYear,y=..count..,fill=Entry_Term))+
+  geom_bar(stat="count", position = position_dodge())+ 
+  facet_grid(test$Entry_Term)+
+  geom_text(aes(label=..count..),stat="count",vjust=-0.2,cex=3)+
+              ggtitle("Persistence by Year for testing dataset")
+```
+
+Note: 
+$$Perc.PassedEnrolledCourse = \frac{N.PassedCourse}{N.RegisteredCourse}$$
+$$Perc.Pass = \frac{N.PassedCourse}{N.CourseTaken}$$
+$$Perc.Withd = \frac{N.Ws}{N.RegisteredCourse}$$
+So later we don't need to use N.PassedCourse and N.CourseTaken 
+
+I implement all missing value of Perc.Pass to 0, since in that situation, the couseTaken of the students is 0, the passed coursed and the percentage should also be 0.
+
+I implement missing value of HSGPA and SAT_Total to their median value, and delete the rows that missing value of Gender.
+
+I also transfer Gender to a dummy variable Gender(male=1 and female=0)
+
+I create 4 new dummy variables Afram(True=1, False=0), Asian(True=1, False=0), Hispanic(True=1, False=0), Multi(True=1, False=0), (if race before are all 0, then this student will be White), which are numerical value and transferred from Race_Ethc_Visa.
+
+I also transfer Entry term(2131,2141,2151) to factor, then changed it to (2131=1,2141=2,2151=3), since I think as term is a continuous categorical predictor.
+
+\newpage
+
+\section{B. Build Regression Models - 20 pts - each model 5 pts}
+
+Build linear regressions as listed below the specific four models to predict $y1$ with a small set of useful predictors. Please fit all these by justifying why you do (I expect grounding justifications and technical terms used), report the performance indicators in a comparative table, $MSE_{train}$, $MSE_{test}$, $R_{adj, train}^2$ and $R_{adj, test}^2$ using train and test data sets. The regression models you will fit:
+
+\begin{enumerate}
+\item Best OLS SLR
+\item Best OLS MLR using any best small subset of predictors (using any selection methods)
+\item Best MLR Ridge with any best small subset of predictors
+\item Best MLR Lasso with any best small subset of predictors
+\end{enumerate}
+
+For tuning parameter, justify with statistical methods/computations why you choose.
+
+\subsection{Section B solutions} 
+```{r}
+## data to use for regression:
+# numv <- sapply(train, class) == "numeric" | sapply(train, class) == "integer"
+# Train1 <- train[, numv]
+Train1 = subset(train, select = -c(Race_Ethc_Visa, N.PassedCourse, N.CourseTaken, Persistence.NextYear))
+
+Test1 = subset(test, select = -c(Race_Ethc_Visa, N.PassedCourse, N.CourseTaken, Persistence.NextYear))
+
+#Variable/Column names
+colnames = colnames(Test1)
+colnames
+```
+
+```{r}
+#correlation graph 
+library(corrplot)
+library(RColorBrewer)
+cormat <- round(cor(Train1),4)
+corrplot(cormat, type="lower", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"), title = "correlations between variables")
+```
+
+```{r}
+#Response variables 
+y1_train = Train1$Term.GPA #numerical
+y1_test = Test1$Term.GPA
+x1_train = model.matrix(Term.GPA~.,Train1)[,-1]
+x1_test = model.matrix(Term.GPA~.,Test1)[,-1]
+
+n_train = nrow(Train1)
+n_test = nrow(Test1)
+```
+
+
+#### Model 1. 
+```{r}
+Performance = matrix(NA, 17, 5, dimnames=list(NULL, paste(1:5)))
+
+
+for (i in 1:17){
+  y = Train1$Term.GPA #改个名字，后面predict的名字要和model中用的一样，不然predict不出来
+  x= x1_train[,i]
+  
+  model_lm <- lm(y~ x)
+  #pred_train = predict(model_lm, data=Train1) #y_train_hat
+  
+  Xh<-data.frame(y=Train1$Term.GPA,x=x1_train[,i])
+  pred_train = predict(model_lm, Xh) #y_train_hat
+  
+  Xh<-data.frame(y=Test1$Term.GPA, x=x1_test[,i])
+  pred_test = predict(model_lm, Xh) #y_test_hat
+  
+  Performance[i,1] = colnames[i] #column name
+  Performance[i,2] = mean((y1_train-pred_train)^2) #MSE_train
+  Performance[i,3] = mean((y1_test-pred_test)^2) #MSE_test
+  
+  Performance[i,4] = summary(model_lm)$adj.r.squared # adj_r_squared_train
+  
+  #adj_r_sq = 1-(n-1)/(n-(p+1))*SSE/SSTO
+  # SSTO = SSE+SSR
+  SSE = sum((y1_test - pred_test)^2) #SSE
+  # SSR = sum((pred_test - mean(y1_test))^2) #SSR
+  SSTO = sum((y1_test - mean(y1_test))^2)#SSTO
+  adj.r.squared_test = 1- ((n_test-1)/(n_test-2))*(SSE/SSTO) # adj_r_squared_test
+  Performance[i,5] = adj.r.squared_test
+  
+
+}
+
+
+cat("The best OLS SLR using predictor:", Performance[which.min(Performance[,3]),][1])
+
+table1 = matrix(c(Performance[which.min(Performance[,3]),][1],
+                  round(as.numeric(Performance[which.min(Performance[,3]),][2:5]),4)),1,5)
+
+colnames(table1)=c("Predictor","MSE_train", "MSE_test", "adj.r.squared_train", "adj.r.squared_test")
+rownames(table1)=c("The best SLR")
+
+knitr::kable(table1, caption = " ")
+```
+
+
+***
+#### Model 2. 
+```{r}
+# there is no predict method for regsubsets. We need to write one ourselves
+predict.regsubsets=function(object, newdata, id, ...){
+  form=as.formula(object$call[[2]])
+  mat=model.matrix(form,newdata)
+  coefi=coef(object,id=id)
+  xvars=names(coefi)
+  mat[,xvars]%*%coefi #prediction or fitted results
+}
+```
+
+```{r}
+library(leaps) #regsubsets
+Performance = matrix(NA, 17, 5, dimnames=list(NULL, paste(1:5)))
+
+Model_regfit=regsubsets(Term.GPA~., data=Train1, nvmax=17, method = "forward")
+
+for(i in 1:17){
+  #MSE_{test}
+  pred_train = predict(Model_regfit, Train1, id=i)
+  pred_test = predict(Model_regfit, Test1, id=i)
+  
+  Performance[i,1] = i #colume name
+  
+  Performance[i,2] = mean((y1_train-pred_train)^2) #MSE_train
+  Performance[i,3] = mean((y1_test-pred_test)^2) #MSE_test
+  
+  SSE = sum((y1_train - pred_train[,1])^2) #SSE
+  SSTO = sum((y1_train - mean(y1_train))^2)#SSTO
+  adj.r.squared_train = 1- ((n_train-1)/(n_train-(i+1)))*(SSE/SSTO) # adj_r_squared_train
+  Performance[i,4] = adj.r.squared_train
+  
+  SSE = sum((y1_test - pred_test[,1])^2) #SSE
+  SSTO = sum((y1_test - mean(y1_test))^2)#SSTO
+  adj.r.squared_test = 1- ((n_test-1)/(n_test-2))*(SSE/SSTO) # adj_r_squared_test
+  Performance[i,5] = adj.r.squared_test
+}
+
+#using BIC to select the best model
+#reg.summary=summary(Model_regfit)
+#plot(reg.summary$bic,xlab="Number of Variables",ylab="BIC",type='l')
+#points(which.min(reg.summary$bic),reg.summary$bic[which.min(reg.summary$bic)],col="red",cex=2,pch=20)
+
+# plot of test MSE and choose best model
+#plot((Performance[,3]),type='b')
+
+cat("The best OLS MLR uses:",Performance[which.min(Performance[,3]),][1], "predictor(s)\n")
+cat("Predictor(s) and coefficient(s):\n")
+coef(Model_regfit,1)
+table2 = matrix(c(round(Performance[which.min(Performance[,3]),],4)),1,5)
+
+colnames(table2)=c("Number of Predictor","MSE_train", "MSE_test", "adj.r.squared_train", "adj.r.squared_test")
+rownames(table2)=c("The best OLS MLR")
+
+knitr::kable(table2, caption = "The best OLS MLR")
+
+
+```
+
+
+***
+#### Model 3. 
+```{r}
+library(glmnet) #ridge/lasso regression
+```
+
+```{r}
+# alpha=0 the ridge penalty.
+set.seed(99)
+cv.out=cv.glmnet(x1_train,y1_train,alpha=0)
+bestlam=cv.out$lambda.min
+
+ridge.mod=glmnet(x1_train,y1_train,alpha=0,lambda=bestlam) 
+# coef(ridge.mod)
+
+pred_train=predict(ridge.mod,s=bestlam,newx=x1_train)
+MSE_train = mean((pred_train-y1_train)^2) #train MSE 
+
+pred_test=predict(ridge.mod,s=bestlam,newx=x1_test)
+MSE_test = mean((pred_test-y1_test)^2) #test MSE
+
+SSE = sum((y1_train - pred_train[,1])^2) #SSE
+SSTO = sum((y1_train - mean(y1_train))^2) #SSTO
+adj.r.squared_train = 1- ((n_train-1)/(n_train-(17+1)))*(SSE/SSTO) # adj_r_squared_train
+  
+SSE = sum((y1_test - pred_test[,1])^2) #SSE
+SSTO = sum((y1_test - mean(y1_test))^2)#SSTO
+adj.r.squared_test = 1- ((n_test-1)/(n_test-(17+1)))*(SSE/SSTO) # adj_r_squared_test
+
+#table
+table3 = matrix(c(bestlam, MSE_train,MSE_test, adj.r.squared_train, adj.r.squared_test),1,5)
+colnames(table3)=c("Best_lambda","MSE_train", "MSE_test", "adj.r.squared_train", "adj.r.squared_test")
+rownames(table3)=c("ridge regression model")
+table3 = round(table3, 4)
+
+knitr::kable(table3, caption = "Full model fitted by ridge regression")
+```
+
+
+***
+#### Model 4.
+```{r}
+# alpha=1 the lasso penalty.
+set.seed(99)
+cv.out=cv.glmnet(x1_train,y1_train,alpha=1)
+bestlam=cv.out$lambda.min
+
+lasso.mod=glmnet(x1_train,y1_train,alpha=1,lambda=bestlam)
+
+pred_train=predict(lasso.mod,s=bestlam,newx=x1_train)
+MSE_train = mean((pred_train-y1_train)^2) #train MSE 
+
+pred_test=predict(lasso.mod,s=bestlam,newx=x1_test)
+MSE_test = mean((pred_test-y1_test)^2) #test MSE
+
+SSE = sum((y1_train - pred_train[,1])^2) #SSE
+SSTO = sum((y1_train - mean(y1_train))^2) #SSTO
+adj.r.squared_train = 1- ((n_train-1)/(n_train-2))*(SSE/SSTO) # adj_r_squared_train
+  
+SSE = sum((y1_test - pred_test[,1])^2) #SSE
+SSTO = sum((y1_test - mean(y1_test))^2)#SSTO
+adj.r.squared_test = 1- ((n_test-1)/(n_test-2))*(SSE/SSTO) # adj_r_squared_test
+
+#table
+table_coef = matrix(c(coef(lasso.mod)[1],coef(lasso.mod)[3]),1, 2)
+colnames(table_coef)=c("Intercept", "HSGPA")
+knitr::kable(table_coef, caption = "Predictor(s) and coefficient(s)")
+
+table4 = matrix(c(bestlam, MSE_train,MSE_test, adj.r.squared_train, adj.r.squared_test),1,5)
+colnames(table4)=c("Best_lambda","MSE_train", "MSE_test", "adj.r.squared_train", "adj.r.squared_test")
+rownames(table4)=c("lasso regression model")
+table4 = round(table4, 4)
+knitr::kable(table4, caption = "Full model fitted by lasso regression")
+```
+Tuning parmeter: best_lamda, I use cross validation to choose best_lamda
+\newpage
+
+\section{C. Build Classification Models  - 20 pts - each model 5pts}
+
+Build  four classification models as below. Please fit all these, include performance indicators for train and test data sets, separately. Include confusion matrix for each. For each `train` and `test` data set, report: `accuracy`, `recall`, `precision`, and `f1` in a cooperative table. For LR or LDA, include ROC curve, area and interpretation. The classification models you will fit:
+
+\begin{enumerate}
+\item Logistic Regression (LR) with any best small subset of predictors
+\item KNN Classification with any best small subset of predictors
+\item Linear Discriminant Analysis (LDA) with any best small subset of predictors
+\item Quadratic Discriminant Analysis (QDA) with any best small subset of predictors
+\end{enumerate}
+
+Justify why you choose specific K in KNN with a grid search or CV methods.
+
+
+\subsection{Section C solutions} 
+
+```{r}
+## data to use for classification:
+# numv <- sapply(train, class) == "numeric" | sapply(train, class) == "integer"
+# Train1 <- train[, numv]
+Train2 = subset(train, select = -c(Race_Ethc_Visa))
+Train2$Persistence.NextYear <- as.factor(Train2$Persistence.NextYear)
+
+Test2 = subset(test, select = -c(Race_Ethc_Visa))
+Test2$Persistence.NextYear <- as.factor(Test2$Persistence.NextYear)
+
+#Variable/Column names
+colnames = colnames(Test1)
+colnames
+```
+
+```{r}
+#Response variables 
+y2_train = Train2$Persistence.NextYear #categoric
+y2_test = Test2$Persistence.NextYear
+
+x2_train = model.matrix(Persistence.NextYear~.,Train2)[,-1]
+x2_test = model.matrix(Persistence.NextYear~.,Test2)[,-1]
+```
+
+```{r}
+cat("The importance of predictors:")
+library(randomForest)
+fit_rf = randomForest(Persistence.NextYear~., data=Train2)
+# importance(fit_rf)
+varImpPlot(fit_rf)
+```
+
+```{r}
+set.seed(20)
+# load the library
+library(mlbench)
+library(caret)
+# define the control using a random forest selection function
+control <- rfeControl(functions=rfFuncs, method="cv", number=5)
+# run the RFE algorithm
+results <- rfe(x2_train, y2_train, sizes=c(1:20), rfeControl=control)
+# summarize the results
+  # print(results)
+# list the chosen features
+# predictors(results)
+# plot the results
+cat("How many numbers of feature should we select:\n")
+plot(results, type=c("g", "o"))
+cat("x is Number of variables")
+```
+
+```{r}
+perfcheck <- function(ct) {
+  Accuracy <- (ct[1]+ct[4])/sum(ct)
+  Recall <- ct[4]/sum((ct[2]+ct[4]))      #TP/P   or Power, Sensitivity, TPR 
+  Precision <- ct[4]/sum((ct[3]+ct[4]))   #TP/P*
+  F1 <- 2/(1/Recall+1/Precision)
+  Values <- as.vector(round(c(Accuracy, Recall, Precision, F1),4)) *100
+  Metrics = c("Accuracy", "Recall","Precision", "F1")
+  cbind(Metrics, Values)
+  #list(Performance=round(Performance, 4))
+}
+```
+
+```{r}
+### create confusion matrics
+create_cm <- function(true, pred) {
+  postive_positve = 0
+  positive_negative = 0
+  nagtive_positive = 0
+  nagtive_nagtive = 0
+  for (i in seq(1:length(true))){
+    if (true[i] == 0 & pred[i] == 0) {
+      nagtive_nagtive = nagtive_nagtive + 1
+    }
+    else if (true[i] == 1 & pred[i] == 0) {
+      positive_negative = positive_negative + 1
+    }
+    else if (true[i] == 0 & pred[i] == 1) {
+     
+      nagtive_positive = nagtive_positive + 1
+    }
+    else {
+      postive_positve = postive_positve + 1
+    }
+  }
+  return(matrix(c(nagtive_nagtive, nagtive_positive, positive_negative, postive_positve), nrow = 2, ncol = 2, byrow = T  ))
+}
+
+### calculate the area under the curve on [0,1]
+simple_auc <- function(TPR, FPR){
+  # inputs already sorted, best scores first 
+  dFPR <- c(diff(FPR), 0)
+  dTPR <- c(diff(TPR), 0)
+  abs(sum(TPR * dFPR) + sum(dTPR * dFPR)/2)
+}
+
+### Roc curve function
+create_roc <- function(true, probs, interval, title) {
+  tpr_list = c()
+  fpr_list = c()
+  for (i in seq(0,1, interval)) {
+    pred=rep(0,length(probs))
+    pred[probs > i]=1
+    cm = create_cm(true, pred)
+    TPR = cm[4]/sum((cm[2]+cm[4]))  
+    FPR = cm[3]/sum((cm[1]+cm[3])) 
+    tpr_list = c(tpr_list, TPR)
+    fpr_list = c(fpr_list, FPR)
+  }
+  
+  # auc = abs(sum((fpr_list[2:length(fpr_list)]-fpr_list[1:length(fpr_list)-1])*tpr_list[2:length(tpr_list)]))
+  # or auc= sum(diff(fpr_list[i])*rollmean(tpr_list[i],2))
+  
+  auc = simple_auc(tpr_list,fpr_list)
+  
+  plot(fpr_list, tpr_list, type = "l", col = "Red", 
+       main = title, xlab = "False Positive Rate", ylab = "True Positive Rate")
+  abline(0,1)
+  legend(0.7, 0.3, sprintf("%3.3f",auc), lty=c(1,1), lwd=c(2.5,2.5), col="blue", title = "AUC")
+}
+
+```
+
+
+#### Model 1. 
+```{r}
+### logistic regression
+glm_train = glm(Persistence.NextYear~Term.GPA+HSGPA+SAT_Total, data=Train2, family=binomial)
+
+# train data
+glm_train_prob = predict(glm_train, Train2, type="response")
+glm_train_pred=rep(0,length(y2_train))
+glm_train_pred[glm_train_prob>.5]=1
+
+# test data
+glm_test_prob = predict(glm_train, Test2, type="response")
+glm_test_pred=rep(0,length(y2_test))
+glm_test_pred[glm_test_prob>.5]=1
+
+ct_glm_train = table(y2_train, glm_train_pred)
+ct_glm_test = table(y2_test, glm_test_pred)
+
+
+knitr::kable(perfcheck(ct_glm_train), caption = "Training set Report of logistic regression")
+knitr::kable(perfcheck(ct_glm_test), caption = "Testing set Report of logistic regression")
+
+cat('plot:')
+create_roc(y2_train, glm_train_prob, 0.01, 'ROC curve for logistic regression')
+```
+An ideal ROC curve will hug the top left corner, and the larger area under the ROC curve the better the classifier, above graph tells that this logistic regression model works ok.the ROC curve for the logistic regression model fit to these data is virtually indistinguishable from ROC for the LDA model.
+
+
+***
+#### Model 2. 
+```{r}
+library(class)
+Knn_error = data.frame('i'=1:50, 'train_error'=rep(0,50), 'test_error'=rep(0,50)) # New data frame to store the error value
+
+train.X = model.matrix(Persistence.NextYear~Term.GPA+HSGPA+SAT_Total, Train2)[,-1]
+test.X = model.matrix(Persistence.NextYear~Term.GPA+HSGPA+SAT_Total, Test2)[,-1]
+
+Knn_train = 0
+knn_test = 0
+min_test_error = Inf
+min_train_error = 0
+
+set.seed(99)
+
+for (i in 1:50){
+  knn_train = knn(train.X, train.X, y2_train, k=i)
+  knn_train <- as.numeric(as.character(knn_train))
+  Knn_error[i,'train_error'] = mean(knn_train!=y2_train)
+    
+  knn_test = knn(train.X, test.X, y2_train, k=i)
+  knn_test <- as.numeric(as.character(knn_test))
+  Knn_error[i,'test_error'] = mean(knn_test!=y2_test)
+    
+  if (Knn_error[i,'test_error'] < min_test_error){
+    min_test_error = Knn_error[i,'test_error']
+    ct_knn_train=table(y2_train, knn_train)
+    ct_knn_test=table(y2_test, knn_test)
+    best_k = i
+    }
+  
+  if (Knn_error[i,'train_error'] < Knn_error[best_k,'train_error'] & Knn_error[i,'test_error'] == min_test_error) {
+      min_train_error = Knn_error[i,'train_error']
+      ct_knn_train=table(y2_train, knn_train)
+      ct_knn_test=table(y2_test, knn_test)
+      best_k = i
+      }
+}
+
+## Plot the training and the testing errors versus 1/K for K=1,..,50
+cat('the best k is:', best_k)
+
+library(ggplot2)
+ggplot(Knn_error, aes(x=i)) + geom_point(aes(y=train_error,col = "Train")) + geom_line(aes(y=train_error),col = "Blue") + geom_point(aes(y=test_error,col = "Test")) + geom_line(aes(y=test_error),col = "Red") + labs(x="K",y="Error",title="KNN Regression Error",fill="")
+
+knitr::kable(perfcheck(ct_knn_train), caption = "Training set Report of KNN")
+
+knitr::kable(perfcheck(ct_knn_test), caption = "Testing set Report of KNN")
+
+```
+
+I choose the best k with gird search, and I choose the one with the lowest test error and also the one with lowest train error while I keep test error the lowest.
+
+
+***
+#### Model 3. 
+```{r}
+### LDA
+library(MASS)
+lda_train = lda(Persistence.NextYear~Term.GPA+HSGPA+SAT_Total, data=Train2)
+
+# train data
+lda_train_pred = predict(lda_train, Train2)
+
+# test data
+lda_test_pred = predict(lda_train, Test2)
+
+ct_lda_train = table(y2_train, lda_train_pred$class)
+ct_lda_test = table(y2_test, lda_test_pred$class)
+
+
+knitr::kable(perfcheck(ct_lda_train), caption = "Training set Report of LDA")
+knitr::kable(perfcheck(ct_lda_test), caption = "Testing set Report of LDA")
+
+create_roc(y2_train, lda_train_pred$posterior[,2], 0.01, 'ROC curve for lda')
+```
+
+An ideal ROC curve will hug the top left corner, and the larger area under the ROC curve the better the classifier. The overall performance of a classifier, giving by AUC in above graph tells that this LDA model works well since its over 0.5.
+
+
+***
+#### Model 4. 
+```{r}
+### QDA
+library(MASS)
+
+qda_train = qda(Persistence.NextYear~Term.GPA+HSGPA+SAT_Total, data=Train2)
+
+# train data
+qda_train_pred = predict(qda_train, Train2)
+
+# test data
+qda_test_pred = predict(qda_train, Test2)
+
+ct_qda_train = table(y2_train, qda_train_pred$class)
+ct_qda_test = table(y2_test, qda_test_pred$class)
+
+
+knitr::kable(perfcheck(ct_qda_train), caption = "Training set Report of LDA")
+knitr::kable(perfcheck(ct_qda_test), caption = "Testing set Report of LDA")
+
+```
+
+\newpage
+
+\section{D. Overall Evaluations and Conclusion - 5 pts}
+
+Briefly, make critiques of the models fitted and write the conclusion (one sentence for each model, one sentence for each problem - regression and classificaton problems we have here). Also, just address one of these: diagnostics, violations, assumptions checks, overall quality evaluations of the models,  importance analyses (which predictors are most important or effects of them on response), outlier analyses. You don't need to address all issues. Just show the reflection of our course materials. 
+
+\subsection{Section D solution} 
+
+diagnostics, violations, assumptions checks, overall quality evaluations of the models
+
+-  Regression Problem
+
+The correlations between Term.GPA and other variables are very low, even the highest correlation (HSGPA and Term.GPA) is very small (about 0.06), and the most important response in these 4 models is HSGPA. The results between the 4 models are very similar.
+
+  \begin{enumerate}
+  
+  \item Best OLS SLR: I choose HSGPA to be the variable of my single linear regression since with it, the model with testing data has the lowest MSE.
+    
+  \item Best OLS MLR: Using forward stepwise selection with OLS to select the best subset selection, the best MLR model is actually with only 1 variable(HSGPA) and which makes it the same model as the Best OLS SLR and have the same result.
+    
+  \item Best MLR Ridge: My ridge regression model has a negative adjust R square, and a smaller value of adjusted R square indicates a model with a large test error and which makes Ridge regression model in this case a worst model. I guess one of the reasons is because ridge can only make the coefficient close to 0, can't eliminate the variable, so ridge regression
+will include all p predictors in the final model.
+  
+  \item Best MLR Lasso: Lasso regression performs better than the ridge regression, and all the coefficients are 0 except HSGPA, which means only HSGPA is used in this model, and the adjust R square is positive in this case.
+  
+  
+  \end{enumerate}
+
+  
+- Classification Problem
+
+For classification, I first conduct an importance analyses on responses with RANDOM FOREST (shows in the graph in the beginning of Part C), and the graph ranks the importance the responses from high to low, and also I use REF method with random forest algothrim and cross validation to choose how many attributes are the best, and it shows 3 attributes are the best. Therefore for all the classification problems, I use Term.GPA, HSGPA, and SAT_Total.
+  
+  \begin{enumerate}
+  
+  \item Logistic Regression (LR): The result of my logistic regression is the best among these 4 models, it has the highest F1 score and accuracy. The assumptions of LR are all matched.
+  
+  \item KNN Classification: The performance of KNN is worse than LR, but its acceptable. Hence KNN is a completely non-parametric approach, no assumptions are made about the shape of the decision boundary. Also, KNN works better when it's nonlinear relationship.
+  
+  \item Linear Discriminant Analysis (LDA): My LDA model has the similar results as LR, tho I think it does not meet all Gaussian assumptions since LR still performans better than LDA.
+  
+  \item Quadratic Discriminant Analysis (QDA): QDA gives the worst results in this case, I think its because the boundary of the classes is most likely linear (i.e not nonliear). Since LDA performs better than QDA, we can assume that K classes share a common covariance matrix
+  
+  \end{enumerate}
+
+
+\newpage
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### Write your pair you worked at the top of the page. If no pair, it is ok. List other fiends you worked with (name, last name): ...
+
+### Disclose the resources or persons if you get any help: ...
+
+### How long did the assignment solutions take?: 10 hrs
+
+
+***
+## References
+James, G., Witten, D., Hastie, T., & Tibshirani, R. (2013). An introduction to statistical learning (Vol. 112, p. 18). New York: springer.
+
+Retrieved 1st Mar. 2021 from https://dataaspirant.com/feature-selection-techniques-r/

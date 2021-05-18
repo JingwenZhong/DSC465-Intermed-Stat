@@ -1,0 +1,547 @@
+---
+title: "Module 6 Assignment on Trees and Boosting"
+author: "Jingwen Zhong // Graduate Student"
+date: "4/1/2021"
+#output: pdf_document
+output:
+  pdf_document: 
+    latex_engine: xelatex
+    fig_height: 4
+    fig_caption: yes
+  df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, warning = FALSE, message = FALSE, fig.show ='hold',tidy.opts=list(width.cutoff=80))
+```
+
+***
+## Module Assignment
+
+You will apply tree, bagging, random forests, and boosting methods to the `Caravan` data set with 5,822 observations on 86 variables with a binary response variable. This is a classification problem.
+
+The data contains 5,822 real customer records. Each record consists of 86 variables, containing socio-demographic data (variables 1-43) and product ownership (variables 44-86). The socio-demographic data is derived from zip codes. All customers living in areas with the same zip code have the same socio-demographic attributes. Variable 86 (Purchase) is the target/response variable, indicating whether the customer purchased a caravan insurance policy. Further information on the individual variables can be obtained at http://www.liacs.nl/~putten/library/cc2000/data.html
+
+Fit the models on the training set (as the split shown at the bottom codes) and to evaluate their performance on the test set. Use the R lab codes. Feel free to use other packs (caret) and k-fold methods if you like.
+
+
+***
+## Q1) (*Modeling*) 
+
+#### a. Create a training set consisting from random 4,000 observations (shuffled and then split) with the seed with `set.seed(99)` and a test set consisting of the remaining observations (see the code at the bottom). Do a brief EDA on the target variable. Overall, describe the data. Do you think a samll number of predictors suffice to get the good results?
+
+```{r}
+rm(list = ls())
+# dev.off()
+
+library(ISLR)
+#View(Caravan)
+  # dim(Caravan) #5822x86
+  # View(Caravan)
+  # colnames(Caravan)
+  # str(Caravan)
+  # summary(Caravan)
+
+#check
+  # Caravan$Purchase
+
+#imbalanced data issue AND sparsity
+plot(Caravan$Purchase, main="Purchase information", xlab="Purchase", ylab = "counts")
+table(Caravan$Purchase)
+prop.table(table(Caravan$Purchase))
+
+#recode the target variable: you will need one of them for models, just aware
+Caravan$purchase = ifelse(Caravan$Purchase == "Yes", 1, 0)
+# Caravan$Purchase = ifelse(Caravan$Purchase == 1, "Yes", "No")
+
+#shuffle, split train and test
+set.seed(99)
+rows <- sample(nrow(Caravan))
+train = rows[1:4000] #1:4000
+#split
+#train target
+cat("\ntraining set")
+Caravan.train = Caravan[train, ]
+table(Caravan.train$Purchase)
+table(Caravan.train$purchase)
+#test target
+cat("\ntesting set")
+Caravan.test = Caravan[-train, ]
+table(Caravan.test$Purchase)
+table(Caravan.test$purchase)
+
+#dims
+dim(Caravan.train) #4000x87
+  # dim(Caravan.test) #1822x87
+
+```
+
+Overall, the data has 86 predictors which is much more than what we used in previous assignments, and I think a small number of predictors among these 86 predictors suffice to get the good results.
+
+```{r}
+#get accuracy score
+cal_acc = function(t) {
+  return((t[1]+t[4])/sum(t))
+}
+
+#calculate precision score
+cal_prec = function(t) {
+  return((t[4])/(t[3]+t[4]))
+}
+```
+
+***
+#### b. Fit a `logistic regression` to the training set with `Purchase` as the response and all the other variables as predictors. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+```{r}
+### logistic regression
+glm_train = glm(purchase~.-Purchase, data=Caravan.train, family=binomial)
+
+# train data
+glm_train_prob = predict(glm_train, Caravan.train, type="response")
+glm_train_pred=rep(0,length(Caravan.train$purchase))
+glm_train_pred[glm_train_prob>.5]=1
+LR_train_accuracy =mean(glm_train_pred == Caravan.train$purchase)
+cat('Accuracy score of train data set is', LR_train_accuracy)
+
+# test data
+glm_test_prob = predict(glm_train, Caravan.test, type="response")
+glm_test_pred=rep(0,length(Caravan.test$purchase))
+glm_test_pred[glm_test_prob>.5]=1
+
+LR_test_accuracy = mean(glm_test_pred == Caravan.test$purchase)
+cat('\nAccuracy score of test data set is', LR_test_accuracy)
+
+#precision
+cm = table(glm_train_pred, Caravan.train$purchase)
+LR_train_precision = cal_prec(cm)
+
+cm0 = table(glm_test_pred, Caravan.test$purchase)
+LR_test_precision = cal_prec(cm0)
+```
+
+***
+#### c. Fit a `classification tree` model to the training set with `Purchase` as the response and all the other variables as predictors. Use cross-validation `cv.tree()` in order to determine the optimal level of tree complexity and prune the tree. Then, report the $Accuracy$ score on the train and test data sets. If the R command gives errors, make necessary fixes to run the model. Discuss if any issues observed.
+
+
+```{r}
+## Fitting Classification Trees
+library(tree)
+# Change Purchase back
+classification_tree=tree(Purchase~.-purchase,Caravan.train)
+
+##CV
+# k is alpha in pruning cost fn
+set.seed(99)
+cv.caravan=cv.tree(classification_tree,FUN= prune.misclass) #change FUN to other metrics
+  # names(cv.caravan)
+  # cv.caravan
+
+#plots
+par(mfrow=c(1,2))
+plot(cv.caravan$size,cv.caravan$dev,type="b")
+plot(cv.caravan$k,cv.caravan$dev,type="b")
+# plot(classification_tree)
+# text(classification_tree,pretty=0)
+
+```
+
+```{r}
+##prune and best 4 nodes
+#apply prune.tree to prune
+prune.caravan = prune.misclass(classification_tree, best=4)
+plot(prune.caravan)
+text(prune.caravan,pretty=0)
+#is this pruned tree better?
+
+##predict
+tree_train_pred=predict(prune.caravan, Caravan.train, type="class")
+tree_test_pred=predict(prune.caravan, Caravan.test, type="class")
+
+cm1 = table(tree_train_pred, Caravan.train$Purchase)
+cm2 = table(tree_test_pred, Caravan.test$Purchase)
+
+#get the accuracy score
+tree_train_precision = cal_prec(cm1)
+tree_train_accuracy = cal_acc(cm1)
+cat('Accuracy score of train data set is', tree_train_accuracy)
+
+tree_test_precision = cal_prec(cm2)
+tree_test_accuracy = cal_acc(cm2)
+cat('\nAccuracy score of test data set is', tree_test_accuracy)
+
+```
+
+One issues I observed is that in the tree graph, there is no prediction node is YES and my model predict everything as No, and the k is 1, so that means it only have 1 class, and it does not really come out with a tree. I think it's because the data is imbalanced, the percentage of NO of this data is so high (around 0.94), and also even if everything is predict as NO, accuracy still can be high.
+
+***
+#### d. Use the `bagging approach` on the classification trees model to the training set with `Purchase` as the response and all the other variables as predictors. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+```{r}
+## bagging approach
+library(randomForest)
+bagging_approach=randomForest(Purchase~.-purchase, Caravan.train,
+                        mtry=85,
+                        importance=TRUE)
+
+##predict
+bag_train_pred = predict(bagging_approach,Caravan.train)
+# plot(bag_train_pred, Caravan.train$Purchase)
+# abline(0,1)
+
+bag_test_pred = predict(bagging_approach,Caravan.test)
+# plot(bag_test_pred, Caravan.test$Purchase)
+# abline(0,1)
+
+cm3 = table(bag_train_pred, Caravan.train$Purchase)
+cm4 = table(bag_test_pred, Caravan.test$Purchase)
+
+#get the accuracy score
+bag_train_precision = cal_prec(cm3)
+bag_train_accuracy = cal_acc(cm3)
+cat('Accuracy score of train data set is', bag_train_accuracy)
+
+bag_test_precision = cal_prec(cm4)
+bag_test_accuracy = cal_acc(cm4)
+cat('\nAccuracy score of test data set is', bag_test_accuracy)
+
+
+```
+
+***
+#### e. Use the `random forests` on the classification trees model to the training set with `Purchase` as the response and all the other variables as predictors. Find the optimal `mtry` and `ntree` with a sophisticated choice (no mandatory to make cross-validation, just try some) and report these. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+```{r}
+## random forests
+# try p=sqrt of p
+library(randomForest)
+rf_accuracy = matrix(NA, 18, 6, dimnames=list(NULL, paste(1:6)))
+
+x<- c(50, 250, 500) #ntree
+y<- c(3, 8, 9, 10, 45, 80) #mtry
+count = 0 
+for(i in x){
+  for (j in y){
+    count = count+1
+    rf_approach=randomForest(Purchase~.-purchase, Caravan.train,
+                          mtry=j, ntree=i,
+                          importance=TRUE)
+    
+    rf_accuracy[count,1] = i #ntree
+    rf_accuracy[count,2] = j #mtry
+    
+    #predict
+    rf_train_pred = predict(rf_approach,Caravan.train) # train_predict
+    rf_test_pred = predict(rf_approach,Caravan.test) # test_predict
+    
+    #get the accuracy and precision score
+    cm3 = table(rf_train_pred, Caravan.train$Purchase)
+    cm4 = table(rf_test_pred, Caravan.test$Purchase)
+    
+    rf_accuracy[count,3] = cal_acc(cm3) # train_accuracy
+    rf_accuracy[count,4] = cal_acc(cm4) # test_accuracy
+    
+    rf_accuracy[count,5] = cal_prec(cm3) # train_precision
+    rf_accuracy[count,6] = cal_prec(cm4) # test_precision
+    
+  }
+}
+
+```
+
+```{r}
+colnames(rf_accuracy)=c( "ntree", "mtry", 
+                         "train_accuracy", "test_accuracy",
+                         "train_precision", "test_precision")
+knitr::kable(rf_accuracy, caption = "Some of my tries")
+
+knitr::kable(rf_accuracy[which.max(rf_accuracy[,4]),],caption = "optimal mtry and ntree by test accuracy")
+
+knitr::kable(rf_accuracy[which.max(rf_accuracy[,6]),],caption = "optimal mtry and ntree by test precision")
+
+```
+
+***
+#### f. Perform `boosting` on the training set with `Purchase` as the response and all the other variables as predictors. Find the optimal `shrinkage` value and `ntree` with a sophisticated choice (no mandatory to make cross-validation, just try some) and report these. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+```{r}
+## boosting forests
+library(gbm)
+#shrinkage is lambda in the boost algorithm
+
+boosting_accuracy = matrix(NA, 18, 6, dimnames=list(NULL, paste(1:6)))
+
+x<- c(4000, 5000, 6000) #ntree
+y<- c(0.001, 0.02, 0.05, 0.1, 0.2, 0.5) #shrinkage
+
+count = 0 
+for(i in x){
+  for (j in y){
+    count = count+1
+    boosting_approach=gbm(purchase~.-Purchase, Caravan.train,
+                 distribution="bernoulli",
+                 n.trees=i,
+                 interaction.depth=4,
+                 shrinkage=j,
+                 verbose=F)
+    
+    boosting_accuracy[count,1] = i #ntree 
+    boosting_accuracy[count,2] = j #shrinkage
+   
+    #predict
+    boosting_train_prob = predict(boosting_approach,Caravan.train, n.trees= i)
+    boosting_train_pred=rep(0,length(Caravan.train$purchase))
+    boosting_train_pred[boosting_train_prob>.5]=1 # train_predict
+    
+    boosting_test_prob = predict(boosting_approach,Caravan.test, n.trees= i) # test_predict
+    boosting_test_pred=rep(0,length(Caravan.test$purchase))
+    boosting_test_pred[boosting_test_prob>.5]=1 # test_predict
+    
+    #get the accuracy score
+    boosting_accuracy[count,3] = mean(boosting_train_pred == Caravan.train$purchase) #train_accuracy
+    boosting_accuracy[count,4] = mean(boosting_test_pred == Caravan.test$purchase) # test_accuracy
+    
+    #precision score
+    cm5 = table(boosting_train_pred, Caravan.train$purchase)
+    boosting_accuracy[count,5] = cal_prec(cm5)
+
+    cm6 = table(boosting_test_pred, Caravan.test$purchase)
+    boosting_accuracy[count,6] = cal_prec(cm6)
+
+  }
+}
+```
+
+```{r}
+colnames(boosting_accuracy)=c("ntree", "shrinkage",
+                              "train_accuracy", "test_accuracy",
+                              "train_precision", "test_precision")
+knitr::kable(boosting_accuracy, caption = "Some of my tries")
+
+knitr::kable(boosting_accuracy[which.max(boosting_accuracy[,4]),],caption = "optimal shrinkage and ntree by test accuracy")
+
+knitr::kable(boosting_accuracy[which.max(boosting_accuracy[,6]),],caption = "optimal mtry and ntree by test precision")
+
+
+```
+
+\newpage
+## Q2) (*Discussion and Evaluation*) 
+
+#### a. Overall, compare the five models (parts b-f) in Question#1. Which one is the best  in terms of $Accuracy$? Also, what fraction of the people predicted to make a purchase do in fact make one for on each model (use test data, what is called this score?)? Accuracy or this score: which one do you prefer to evaluate models?\
+
+In terms of $Accuracy$ of test data set, classification tree is the best:
+
+```{r}
+model_table = matrix(c(LR_train_accuracy, tree_train_accuracy, bag_train_accuracy,
+                      rf_accuracy[which.max(rf_accuracy[,4]),3],
+                      boosting_accuracy[which.max(boosting_accuracy[,4]),3],
+                      
+                      LR_test_accuracy, tree_test_accuracy,bag_test_accuracy,
+                      rf_accuracy[which.max(rf_accuracy[,4]),4],
+                      boosting_accuracy[which.max(boosting_accuracy[,4]),4]
+                      ),5, 2)
+colnames(model_table)=c("Train data accuracy", "Test data accuracy")
+rownames(model_table)=c("Logistic regression", "Classification tree", "Bagging","Random forest", "Boosting")
+knitr::kable(model_table, caption = "Comparison of 5 models")
+
+   
+```
+Fraction of the people predicted to make a purchase do in fact make one for each model is called precision:$precision = \frac{TP}{Predicted 'YES'}$ and I prefer precision score to evaluate models.
+
+In terms of precision, boosting gets the best result.
+```{r}
+model_table = matrix(c(LR_train_accuracy, tree_train_accuracy, bag_train_accuracy,
+                      rf_accuracy[which.max(rf_accuracy[,6]),3],
+                      boosting_accuracy[which.max(boosting_accuracy[,6]),3],
+                      
+                      LR_test_accuracy, tree_test_accuracy, bag_test_accuracy,
+                      rf_accuracy[which.max(rf_accuracy[,6]),4],
+                      boosting_accuracy[which.max(boosting_accuracy[,6]),4],
+                      
+                      LR_train_precision, tree_train_precision, bag_train_precision,
+                      rf_accuracy[which.max(rf_accuracy[,6]),5],
+                      boosting_accuracy[which.max(boosting_accuracy[,6]),5],
+                      
+                      LR_test_precision, tree_test_precision, bag_test_precision,
+                      rf_accuracy[which.max(rf_accuracy[,6]),6],
+                      boosting_accuracy[which.max(boosting_accuracy[,6]),6]
+                      ), 5, 4)
+colnames(model_table)=c("Train data accuracy", "Test data accuracy", "Train data Precision", "Test data Precision")
+rownames(model_table)=c("Logistic regression", "Classification tree", "Bagging", "Random forest", "Boosting")
+knitr::kable(model_table, caption = "Comparison of 5 models by precision")
+```
+
+***
+#### b. Determine which four features/predictors are the most important in the `random forests` and `boosting` models fitted. Include graphs and comments. Are they same features? Why? 
+
+```{r}
+cat("The importance of predictors in the random forests:\n")
+rf_approach=randomForest(Purchase~.-purchase, Caravan)
+
+predictor_impo =importance(rf_approach)
+predictor_impo = data.frame(predictor_impo)
+predictor_impo = predictor_impo[order(-predictor_impo$MeanDecreaseGini), ,drop=FALSE]
+
+head(predictor_impo, n = 4)
+```
+
+```{r}
+varImpPlot(rf_approach)
+```
+
+```{r}
+cat("The importance of predictors in the boosting:\n")
+boosting_approach=gbm(purchase~.-Purchase, Caravan,
+                 distribution="bernoulli",
+                 interaction.depth=4,
+                 verbose=F)
+boosting_summary = summary(boosting_approach)
+head(boosting_summary, n = 4)
+```
+They have 2 same one. They are different because they use different loss function. Random forest uses Gini index to determine importance. Boosting: The function Boosting method uses is in "Generalized Boosted Models: A guide to the gbm package" page 10. And in both method they calculate the importance by randomly permuting each predictor variable at a time and computes the associated reduction in predictive performance.
+
+***
+#### c. Joe claimed that his model accuracy on the prediction for the same problem is 94%. Do you think this is a good model? Explain.
+
+No, because as I said in question 1, the data is imbalanced, the percentage of NO of this data is around 0.94.$Accuracy = \frac{TP+ TN}{total}$.Therefore, even if everything is predict as NO, the accuracy still can be around 0.94.
+
+***
+#### d. (BONUS) How to deal with `imbalanced data` in modeling? Include your solution and one of model's test result to handle this issue. Did it improve?\
+
+Deal with imbalanced data with oversampling
+
+```{r}
+## oversampling
+library(ROSE)
+oversampling_caravan <- ovun.sample(Purchase~., data=Caravan, method = "over", N= 5474*2, seed= 99)
+new_caravan <- oversampling_caravan$data
+
+#balanced data issue and sparsity
+plot(new_caravan$Purchase, main="Purchase information", xlab="Purchase", ylab = "counts")
+table(new_caravan$Purchase)
+prop.table(table(new_caravan$Purchase))
+
+new_caravan$purchase = ifelse(new_caravan$Purchase == "Yes", 1, 0)
+
+#shuffle, split train and test
+set.seed(99)
+rows <- sample(nrow(new_caravan))
+train = rows[1:4000] #1:4000
+
+#train target
+cat("\ntraining set")
+new_caravan.train = new_caravan[train, ]
+table(new_caravan.train$Purchase)
+
+#test target
+cat("\ntesting set")
+new_caravan.test = new_caravan[-train, ]
+table(new_caravan.test$Purchase)
+```
+```{r}
+classification_tree=tree(Purchase~.-purchase,new_caravan.train)
+
+##CV
+# k is alpha in pruning cost fn
+set.seed(99)
+cv.caravan=cv.tree(classification_tree,FUN= prune.misclass) #change FUN to other metrics
+  # names(cv.caravan)
+  # cv.caravan
+
+#plots
+par(mfrow=c(1,2))
+plot(cv.caravan$size,cv.caravan$dev,type="b")
+plot(cv.caravan$k,cv.caravan$dev,type="b")
+# plot(classification_tree)
+# text(classification_tree,pretty=0)
+
+```
+
+```{r}
+##prune and best 4 nodes
+#apply prune.tree to prune
+prune.caravan = prune.misclass(classification_tree, best=2)
+plot(prune.caravan)
+text(prune.caravan,pretty=0)
+#is this pruned tree better?
+
+##predict
+tree_train_pred=predict(prune.caravan, new_caravan.train, type="class")
+tree_test_pred=predict(prune.caravan, new_caravan.test, type="class")
+
+cm7 = table(tree_train_pred, new_caravan.train$Purchase)
+cm8 = table(tree_test_pred, new_caravan.test$Purchase)
+
+#get the accuracy score
+tree_train_precision = cal_prec(cm7)
+tree_train_accuracy = cal_acc(cm7)
+cat('Accuracy score of train data set is', tree_train_accuracy)
+cat('\nPrecision score of train data set is', tree_train_precision)
+
+tree_test_precision = cal_prec(cm8)
+tree_test_accuracy = cal_acc(cm8)
+cat('\nAccuracy score of test data set is', tree_test_accuracy)
+cat('\nPrecision score of test data set is', tree_test_precision)
+
+```
+The result improves a ot, first, it doesn't classfy everything as NO, so it has ok precision score, and although the accuracy is not that high, our model finally seems useful(The previous model is just a junk).
+
+***
+#### e. (BONUS) What happens to the results if you scale the features? Discuss.\
+
+Nothing will happen to Classification tree
+
+```{r}
+#if needed, apply scale (min-max would be preferred) except for the target and categoricals
+#min-max scaling on numerical and dummies
+normalize <- function(x){
+    return((x - min(x)) /(max(x)-min(x)))
+}
+Caravan_sc2=as.data.frame(apply(new_caravan[,1:85],2, FUN=normalize))
+# summary(Caravan_sc2)
+#if want to replace the original featues with scaled ones
+# Caravan[,1:85] = Caravan_sc2
+# summary(Caravan)
+
+
+#just to show: ?scale
+#then bring back the target variable located at 86th column
+Caravan_sc1=scale(new_caravan[,1:85])
+new_caravan[,1:85] = Caravan_sc1
+# summary(Caravan_sc1)
+
+
+#shuffle, split train and test
+set.seed(99)
+rows <- sample(nrow(new_caravan))
+train = rows[1:4000] #1:4000
+
+#train target
+new_caravan.train = new_caravan[train, ]
+
+#test target
+new_caravan.test = new_caravan[-train, ]
+```
+
+***
+
+\newpage
+
+### Write comments, questions: ...
+
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### List the fiends you worked with (name, last name): ...
+
+### Disclose the resources or persons if you get any help: ...
+
+### How long did the assignment solutions take?:  10
+
+***
+## References
+...
+

@@ -1,0 +1,546 @@
+---
+title: "Module 0 Assignment on Reviews"
+author: "Jingwen Zhong // Graduate Student"
+date: "02/10/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, tidy=TRUE, error = TRUE, tidy.opts=list(width.cutoff=80))
+```
+
+## Instruction
+
+In Module 0, we briefly reviewed seven **statistical tests methods** in data analysis:
+
+  1. Conventional (z- or t-) 
+  2. Permutation (randomization-based, all permutations)
+  3. Randomization or Simulated Permutation (simulation-based, some permutations, without replacement)
+  4. Bootstrapping (resampling-based, with replacement)
+  5. Linear Regression (theory-based, LS-based)
+  6. and 7. Nonparametric Approaches: Wilcoxon and Rank-based (median test would be used as well)
+
+In the assignment, you will run these tests with a new data set for two-sample independent mean problem below.
+
+An experiment was administered whether or not extra nitrogen affects the stem weight on seedlings. One group (control, n=8) was controlled with **standard nitrogen**, the other group (treatment, n=8) was given **extra nitrogen**. After two weeks, the stem weights were measured in gr. Assume the populations of the samples are normally distributed with **unknown equal variances**. 
+
+The raw data is as follows:
+
+```{r echo=TRUE, results='hold'}
+control_group <- c(.40, .45, .35, .27, .46, .33, .30, .43)
+trtmnt_group <- c(.49, .45, .35, .38, .48, .55, .47, .65)
+# boxplot(control_group, trtmnt_group)
+# round(sd(control_group),2)
+# round(sd(trtmnt_group),2)
+```
+
+```{r echo=TRUE}
+# Or, use this way, or make data frame so you can run directly the Module0 R Codes
+datam = cbind(c(control_group, trtmnt_group), c(rep(0, 8), rep(1, 8)))
+y <- datam[,1]
+group <- datam[,2]
+colnames(datam)=c("y","group")
+#View(datam) #Check the data
+```
+
+## \newpage{}
+
+### 1) (*Descriptive*) Do descriptive analysis.
+
+a. Is the study design an experimental or observational study? Justify.
+
+The study design is an experimental study.
+  
+In the experimental study, the researcher controls the variables to complete the study, and here the variable we control is the amount of nitrogen that being used on the stem.
+  
+The observational study relies on observation, and the researcher cannot affect the observation object
+
+***
+b. Obtain a side-by-side boxplot on measurements of the two groups. Include the graph. Add title and group names.
+
+```{r}
+groups <- c("Control", "Treatment")
+boxplot(y~group, data=datam, xlab = 'Group', names=groups,
+        ylab='Stem weight(lb)')
+title('Stem weight on seedlings: Control (0) and Treatment (1) groups')
+
+```
+
+***
+c. Obtain summary statistics that show central (mean, median etc) and spread (sd, IQR, range etc) measurements of the data distribution for each group. Make a table and include the statistics. 
+
+```{r}
+summ=matrix(c(16, 8, 8, mean(y), mean(y[group==0]), 
+              mean(y[group==1]),sd(y), sd(y[group==0]), 
+              sd(y[group==1]), median(y), median(y[group==0]),
+              median(y[group==1]),IQR(y), IQR(y[group==0]), 
+              IQR(y[group==1])), 3, 5)
+
+colnames(summ)=c("size (n)", "mean","sd","median","IQR")
+rownames(summ)=c("all","control","treatment")
+
+table1=round(summ,2)
+
+knitr::kable(table1, caption = "Summary of the data")
+```
+
+***
+d. Compare the centers and spreads. Do you see a difference in centers? Do you see a difference in spreads? Comment.
+
+I see a difference in centers, the center of control group is smaller than treatment group
+
+I see a different in spreads, the interquartile range of Control group is larger than the treatment group
+
+***
+e. Do you see any potential outliers? Find and comment if exists. Explain your criterion to find outliers.
+
+```{r}
+
+sd0 = (abs(control_group-mean(control_group)))/sd(y[group==0])
+sd1 = (abs(trtmnt_group-mean(trtmnt_group)))/sd(y[group==1])
+
+cat('z score of control group: \n')
+sd0
+cat('\n')
+cat('z score of treatment group: \n')
+sd1
+
+```
+
+No, I don't see any obvious outliers, my criterion is using the Z score, and I found the z score of 65 in treatment is a little bit large, but still less than 2
+
+\newpage
+
+
+### 2) (*Test*) Using the seven methods above, test at a 5% significance level if the difference in the mean stem weight between seedlings that receive regular nitrogen and those that receive extra nitrogen is not equal. 
+
+a. Write the hypotheses.
+
+$$ H_0: \mu_0 - \mu_1 = 0 $$
+$$ H_a: \mu_0 - \mu_1 \ne 0 $$
+***
+b. What is a hypothesis testing? Write what you know about how to test in general.
+
+Hypothesis testing is to first propose a hypothetical value for the population's parameter, and then use samples and test statistics to determine whether this hypothesis is true or not.
+  
+General steps for a hypothesis test:
+- set a hypotheses in terms of population parameters
+- Collect data and define a test statistic
+- Assume the null hypothesis is true, and determine if the test statistic is unlikely or not
+- get a conclusion
+
+***
+c. Run the seven tests and make a comparative table, showing the `p-values`. (You need to make the table showing all p-values. Modify the lab codes for this data set. Make sure you run line by line)
+```{r}
+# package for Permutation Test
+library(PASWR)
+
+#package for Nonparametric
+library(Rcpp) #Wilcoxon test
+library(Rfit) #rank-based
+
+```
+
+```{r}
+### difference in means
+diff=mean(y[group==1])-mean(y[group==0])
+
+### T test
+t2w=t.test(y~group, var.equal = TRUE)
+t2p=t2w$p.value
+
+### Permutation Test
+set.seed(99)
+reps=choose(16,8) #sample sizes vary
+Comb <- matrix(rep(y,reps),ncol=16, byrow=TRUE)
+pdT6<-SRS(1:16,8)
+Theta=array(0,reps)
+for(i in 1:reps){
+ Theta[i]=mean(Comb[i,pdT6[i,]])-mean(Comb[i,-pdT6[i,]])
+}
+num_out= sum(Theta>=diff | Theta<=-diff) #how many are out of threshold
+pep=num_out/reps
+
+
+### Randomization Test or Approximated Perm test
+### Simulate and resample w/o replacement
+reps2 <- 1000 #B=10000
+results <- numeric(reps2)
+set.seed(99)
+for (i in 1:reps2) { 
+  temp <- sample(y, replace = FALSE) 
+  results[i] <- mean(temp[1:8])-mean(temp[9:16]) 
+} 
+psp=sum(results>=diff | results<=-diff)/(reps2+1)
+
+
+### Bootstrapping (w/ replacement)
+reps2 <- 1000 #B=10000
+results2 <- numeric(reps2)
+set.seed(99)
+for (i in 1:reps2) { 
+temp <- sample(y, replace=TRUE) 
+results2[i] <- mean(temp[1:8])-mean(temp[9:16]) 
+    } 
+bp=sum(results2>=diff | results2<=-diff)/(reps2+1) 
+
+
+### Simple Linear Regression
+lw=summary(lm(y~group))
+
+lp=coef(lw)[2,4]
+
+
+### Nonparametric
+
+### Wilcoxon test for two-sample independent problem
+g1=y[group==1]
+g0=y[group==0]
+fitw=wilcox.test(g0,g1, exact=FALSE)
+wp=fitw$p.value
+
+
+### rank-based test
+fit.r=summary(rfit(y~group))
+mp=fit.r$coefficients[2,4]
+
+```
+
+```{r}
+## Results table
+A=round(as.matrix(c(t2p,pep,psp,bp,lp,wp,mp)),4)
+ftr="Fail to reject the null"
+rn="Reject the null in favor of the alt"
+B=c(rn,rn,rn,rn,rn,rn,ftr)
+C=cbind(A,B)
+colnames(C)=c("P-value","Decision at 5% level")
+rownames(C)=c("t-test","perm","perm-sim","bootst","lin reg","wilcoxon", "rank-based")
+
+#cat('Seven Methods P-values Results: \n')
+
+# Lets use a better format from kable
+knitr::kable(C, caption = "Seven Methods Results")
+```
+
+***
+d. Conclude each result with a short comment at the specified significance level (answer part c and d together, put all the p-value calculations and the comments in a table)
+
+see above
+
+***
+e. Now, write an `overall comment` on the results that communicate with the goal of the problem. Use the context.
+
+The goal of the problem is to determine whether or not extra nitrogen affects the stem weight on seedlings.
+  
+The 6 results show that it does affect the stem, and we can reject our null hypothesis, while Rank-based method shows the test is inconclusive. 
+  
+Overall we can reject our null hypothesis, and conclude that extra nitrogen affects the stem weight on seedlings 
+
+
+\newpage
+
+
+### 3) (*Concepts*) Analyze the validity of some tests.
+
+a. List all the assumptions on `t-test`. 
+
+- Assumption of Independence: you need two independent, categorical groups that represent your independent variable.
+  
+- Assumption of normality: the dependent variable should be approximately normally distributed. The dependent variable should also be measured on a continuous scale. 
+
+- Assumption of Homogeneity of Variance: The variances of the dependent variable should be equal.
+
+***
+
+b. Do the assumptions meet? Check each.
+
+Yes, it matches all assumptions
+
+***
+c. List all the assumptions on `Wilcoxon test`. Do the assumptions meet?
+
+- Data are paired and come from the same population.
+  
+- Each pair is chosen randomly and independently[citation needed].
+  
+- The data are measured on at least an interval scale when, as is usual, within-pair differences are calculated to perform the test (though it does suffice that within-pair comparisons are on an ordinal scale).
+  
+Yes, it matches all assumptions
+
+***
+d. Do you know the assumptions on `linear regression` with LS? (a simple answer works: yes/no. if you know, write all. if not, it is fine we will learn)
+
+NO, I don't know anything about it.
+
+***
+e. The three methods are based on randomization or resampling. What are the merits of doing randomization or resampling? Which of the three methods would work well for large data situation? Why?
+
+Merit: In many situations, we only have one sample, and no claim about the population, we can construct a sampling distribution with randomization or resampling
+  
+Bootstrap: It is the fastest method to compute when data situation is larger. Permutation method is too expensive to
+compute for big sample sizes; and for randomization, the precision of estimates is usually higher, and the two sample values aren't independent
+
+
+\newpage
+
+### 4) (*Extension*) Deep analysis and pitfalls.
+
+a. List the `type of errors` (either Type I or II) committed in the decision made for each test. Make a table that shows all. Describe what Type I and Type II error rates are.
+
+- Type 1 error occurs if we incorrectly reject $H_0$ when it is true, Type 1 error rate is false positive rate
+  
+- Type 2 error occurs if we incorrectly fail to reject $H_0$ when it is false, Type 2 error rate is false negative rate
+  
+```{r}
+A=round(as.matrix(c(t2p,pep,psp,bp,lp,wp,mp)),4)
+ftr="Fail to reject the null"
+rn="Reject the null in favor of the alt"
+t1 = "Type 1 error"
+t2 = "Type 2 error"
+B=c(rn,rn,rn,rn,rn,rn,ftr)
+C =c(t1,t1,t1,t1,t1,t1,t2)
+D=cbind(A,B,C)
+colnames(D)=c("P-value","Decision at 5% level", "Type of error committed")
+rownames(D)=c("t-test","perm","perm-sim","bootst","lin reg","wilcoxon", "rank-based")
+
+knitr::kable(D, caption = "Seven Methods Results and type of errors ")
+
+```
+  
+
+***
+b. Build a 95% `confidence interval` on mean difference between treatment and control groups using t-critical value, df=n1+n2-2, and t-test's standard error formula. Interpret what it says. Does it confirm the p-value result from t-test? 
+
+```{r}
+cat('confidence interval:(',t.test(trtmnt_group, control_group, conf.level=0.95)$conf, ')')
+```
+
+***
+c. Obtain a percentile confidence interval (2.5th to 97.5th) on mean difference for the permutation test (using the permutation sampling distribution of differences on mean). Include the confidence interval. Interpret.
+
+```{r}
+## 2. Permutation Test - exact method using long way
+
+set.seed(99)
+reps=choose(16,8) #sample sizes vary
+Comb <- matrix(rep(y,reps),ncol=16, byrow=TRUE)
+pdT6<-SRS(1:16,8)
+Theta=array(0,reps)
+for(i in 1:reps){
+ Theta[i] = mean(Comb[i,pdT6[i,]])-mean(Comb[i,-pdT6[i,]])
+}
+
+c1 = quantile(Theta, 0.025)
+c2= quantile(Theta, 0.975)
+
+cat('Confidence interval is : (', c1, ',', c2, ')')
+
+```
+
+***
+d. Compare the confidence intervals calculated in part b and c. Which one is more precise? Which method is more efficient? Comment.
+
+Confidence interval in c is more precise, because sample size in t test in Part b is too small. However, t test in part b is more efficient.
+  
+***
+e. Corrupt the data value .40 as 40 in the control group - as if you make a typo so this is a `bad outlier`. Recalculate the p-values of all tests. What changed? Which tests didn't change dramatically?
+
+Only the rank-based doesn't change dramatically, the P value of other tests all changed to greater than 0.05
+
+```{r}
+control_group <- c(40, .45, .35, .27, .46, .33, .30, .43)
+trtmnt_group <- c(.49, .45, .35, .38, .48, .55, .47, .65)
+datam = cbind(c(control_group, trtmnt_group), c(rep(0, 8), rep(1, 8)))
+y <- datam[,1]
+group <- datam[,2]
+colnames(datam)=c("y","group")
+
+### difference in means
+diff=mean(y[group==1])-mean(y[group==0])
+
+### T test
+t2w=t.test(y~group, var.equal = TRUE)
+t2p1=t2w$p.value
+
+### Permutation Test
+library(PASWR) # using allocation functions
+set.seed(99)
+reps=choose(16,8) #sample sizes vary
+Comb <- matrix(rep(y,reps),ncol=16, byrow=TRUE)
+pdT6<-SRS(1:16,8)
+Theta=array(0,reps)
+for(i in 1:reps){
+ Theta[i]=mean(Comb[i,pdT6[i,]])-mean(Comb[i,-pdT6[i,]])
+}
+num_out= sum(Theta>=diff | Theta<=-diff) #how many are out of threshold
+pep1=num_out/reps
+
+
+### Randomization Test or Approximated Perm test
+### Simulate and resample w/o replacement
+reps2 <- 1000 #B=10000
+results <- numeric(reps2)
+set.seed(99)
+for (i in 1:reps2) { 
+  temp <- sample(y, replace = FALSE) 
+  results[i] <- mean(temp[1:8])-mean(temp[9:16]) 
+} 
+psp1=sum(results>=diff | results<=-diff)/(reps2+1)
+
+
+### Bootstrapping (w/ replacement)
+reps2 <- 1000 #B=10000
+results2 <- numeric(reps2)
+set.seed(99)
+for (i in 1:reps2) { 
+temp <- sample(y, replace=TRUE) 
+results2[i] <- mean(temp[1:8])-mean(temp[9:16]) 
+    } 
+bp1=sum(results2>=diff | results2<=-diff)/(reps2+1) 
+
+
+### Simple Linear Regression
+lw=summary(lm(y~group))
+
+lp1=coef(lw)[2,4]
+
+
+### Nonparametric
+
+### Wilcoxon test for two-sample independent problem
+g1=y[group==1]
+g0=y[group==0]
+fitw=wilcox.test(g0,g1, exact=FALSE)
+wp1=fitw$p.value
+
+
+### rank-based test
+fit.r=summary(rfit(y~group))
+mp1=fit.r$coefficients[2,4]
+```
+
+```{r}
+## Results table
+D=round(as.matrix(c(t2p,pep,psp,bp,lp,wp,mp)),4)
+A=round(as.matrix(c(t2p1,pep1,psp1,bp1,lp1,wp1,mp1)),4)
+ftr="Fail to reject the null"
+rn="Reject the null in favor of the alt"
+B=c(ftr,ftr,ftr,ftr,ftr,ftr,ftr)
+C=cbind(D, A,B)
+colnames(C)=c("P-value before","P-value","Decision at 5% level")
+rownames(C)=c("t-test","perm","perm-sim","bootst","lin reg","wilcoxon", "rank-based")
+
+# Lets use a better format from kable
+knitr::kable(C, caption = "Seven Methods Results")
+
+```
+
+***
+f. (BONUS) `Standard error` is basically defined as the standard deviation of the sampling distribution of differences in mean. Either use the R packs or use the std of test statistics simulated for data. Can you find the standard error on mean difference estimate for each test? Do your best to find each. Which one(s) are most efficient test(s)? Why?
+
+The most efficient is linear regression test
+
+```{r}
+
+control_group <- c(.40, .45, .35, .27, .46, .33, .30, .43)
+trtmnt_group <- c(.49, .45, .35, .38, .48, .55, .47, .65)
+datam = cbind(c(control_group, trtmnt_group), c(rep(0, 8), rep(1, 8)))
+y <- datam[,1]
+group <- datam[,2]
+colnames(datam)=c("y","group")
+
+### difference in means
+diff=mean(y[group==1])-mean(y[group==0])
+
+### T test
+t2w=t.test(y~group, var.equal = TRUE)
+t2se=t2w$stderr
+
+### Permutation Test
+library(PASWR) # using allocation functions
+set.seed(99)
+reps=choose(16,8) #sample sizes vary
+Comb <- matrix(rep(y,reps),ncol=16, byrow=TRUE)
+pdT6<-SRS(1:16,8)
+Theta=array(0,reps)
+for(i in 1:reps){
+ Theta[i]=mean(Comb[i,pdT6[i,]])-mean(Comb[i,-pdT6[i,]])
+}
+pese=abs(quantile(Theta, 0.025)-quantile(Theta, 0.975))/4
+
+
+### Randomization Test or Approximated Perm test
+### Simulate and resample w/o replacement
+reps2 <- 1000 #B=10000
+results <- numeric(reps2)
+set.seed(99)
+for (i in 1:reps2) { 
+  temp <- sample(y, replace = FALSE) 
+  results[i] <- mean(temp[1:8])-mean(temp[9:16]) 
+} 
+psse=abs(quantile(results, 0.025)-quantile(results, 0.975))/4
+
+
+### Bootstrapping (w/ replacement)
+reps2 <- 1000 #B=10000
+results2 <- numeric(reps2)
+set.seed(99)
+for (i in 1:reps2) { 
+temp <- sample(y, replace=TRUE) 
+results2[i] <- mean(temp[1:8])-mean(temp[9:16]) 
+    } 
+bse=abs(quantile(results2, 0.025)-quantile(results2, 0.975))/4
+
+### Simple Linear Regression
+lw=summary(lm(y~group))
+lse = lw$sigma/sqrt(16)
+
+
+### Nonparametric
+
+SE = sqrt((7*sd(control_group)^2+7*sd(trtmnt_group)^2)/14*1/4)
+
+### Wilcoxon test for two-sample independent problem
+g1=y[group==1]
+g0=y[group==0]
+fitw=wilcox.test(g0,g1, exact=FALSE)
+wse=SE
+
+
+### rank-based test
+fit.r=summary(rfit(y~group))
+mse=SE
+
+```
+
+```{r}
+## Results table
+A=round(as.matrix(c(t2se,pese,psse,bse,lse,wse,mse)),4)
+
+colnames(A)=c("Standard Error")
+rownames(A)=c("t-test","perm","perm-sim","bootst","lin reg","wilcoxon", "rank-based")
+
+# Lets use a better format from kable
+knitr::kable(A, caption = "Seven Methods Results of Standard Error")
+
+```
+
+***
+g. (BONUS) Ask a challenging question and answer (under the assignment context).
+
+
+\newpage{}
+
+
+I hereby write and submit my solutions without violating the academic honesty and integrity. If so, I accept the consequences. 
+
+
+## References
+
+Retrieved 08 Feb. 2021, from https://www.statisticshowto.com/independent-samples-t-test/
+
+Retrieved 08 Feb. 2021, from https://en.wikipedia.org/wiki/Wilcoxon_signed-rank_test#Assumptions
